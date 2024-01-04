@@ -1,5 +1,9 @@
 
 
+import os
+os.system("sudo kill -9 $(sudo lsof -w /dev/accel3 | awk 'NR>1{print $2}' |uniq)")
+import time
+time.sleep(5)
 from functools import partial
 
 import jax
