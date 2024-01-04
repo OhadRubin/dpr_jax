@@ -72,9 +72,9 @@ class DataArguments:
     )
     passage_field_separator: str = field(default=' ')
     dataset_proc_num: int = field(
-        default=12, metadata={"help": "number of proc used in dataset preprocess"}
+        default=100, metadata={"help": "number of proc used in dataset preprocess"}
     )
-    train_n_passages: int = field(default=8)
+    train_n_passages: int = field(default=5)
     positive_passage_no_shuffle: bool = field(
         default=False, metadata={"help": "always use the first positive passage"})
     negative_passage_no_shuffle: bool = field(
@@ -468,7 +468,7 @@ def main():
 
     if data_args.train_dir:
         data_files = {
-            'train': data_args.train_path
+            'train': data_args.train_path.split(",")
         }
     else:
         data_files = None
@@ -481,8 +481,8 @@ def main():
         tokenize = partial(tokenizer, return_attention_mask=False, return_token_type_ids=False, padding=False,
                             truncation=True)
         query = example[query_field]
-        pos_psgs = [p['title'] + " " + p['text'] for p in unstack_element(example[pos_field])]
-        neg_psgs = [p['title'] + " " + p['text'] for p in unstack_element(example[neg_field])]
+        pos_psgs = [p['title'] + " " + p['text'] for p in unstack_element(example[pos_field])[:5]]
+        neg_psgs = [p['title'] + " " + p['text'] for p in unstack_element(example[neg_field])[:5]]
 
         example['query_input_ids'] = dict(tokenize(query, max_length=data_args.q_max_len))
         example['pos_psgs_input_ids'] = [dict(tokenize(x, max_length=data_args.p_max_len)) for x in pos_psgs]
@@ -491,7 +491,6 @@ def main():
         return example
 
     train_data = train_dataset.map(
-        # tokenize_train,
         partial(tokenize_train,query_field="question",pos_field="positive_ctxs",neg_field="hard_negative_ctxs"),
         batched=False,
         num_proc=data_args.dataset_proc_num,
