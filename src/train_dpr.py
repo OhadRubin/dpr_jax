@@ -63,10 +63,12 @@ class DataArguments:
         default=None, metadata={"help": "Path to train directory"}
     )
     dataset_name: str = field(
-        default="castorini/mr-tydi", metadata={"help": "huggingface dataset name"}
+        default="parquet", metadata={"help": "huggingface dataset name"}
+        # default="castorini/mr-tydi", metadata={"help": "huggingface dataset name"}
     )
     ds_config_name: str = field(
-        default="english", metadata={"help": "huggingface dataset config name"}
+        default="default", metadata={"help": "huggingface dataset config name"}
+        # default="english", metadata={"help": "huggingface dataset config name"}
     )
     passage_field_separator: str = field(default=' ')
     dataset_proc_num: int = field(
@@ -205,7 +207,7 @@ class TevatronTrainingArguments:
         default=8, metadata={"help": "Batch size per GPU/TPU/MPS/NPU core/CPU for training."}
     )
     logging_steps: float = field(
-        default=1,
+        default=10,
         metadata={
             "help": (
                 "Log every X updates steps. Should be an integer or a float in range `[0,1)`. "
@@ -388,6 +390,20 @@ def grad_cache_train_step(state, queries, passages, dropout_rng, axis='device', 
 
 
 
+def unstack_element(element,n_examples=None):
+    keys = list(element.keys())
+    if n_examples is None:
+        n_examples = len(element[keys[0]])
+    for i in range(n_examples):
+        micro_element = {}
+        for key in keys:
+            try:
+                micro_element[key] = element[key][i]
+            except:
+                print([(key,len(element[key])) for key in keys])
+                raise
+        yield micro_element
+        
 
 def main():
     parser = HfArgumentParser((ModelArguments, DataArguments, TevatronTrainingArguments))
@@ -461,12 +477,12 @@ def main():
         datasets.load_dataset(data_args.dataset_name, data_args.config_name, cache_dir=model_args.cache_dir,
                                 data_files=data_files)[data_args.dataset_split]
 
-    def tokenize_train(example):
+    def tokenize_train(example,query_field="query",pos_field="positive_passages",neg_field="negative_passages"):
         tokenize = partial(tokenizer, return_attention_mask=False, return_token_type_ids=False, padding=False,
                             truncation=True)
-        query = example['query']
-        pos_psgs = [p['title'] + " " + p['text'] for p in example['positive_passages']]
-        neg_psgs = [p['title'] + " " + p['text'] for p in example['negative_passages']]
+        query = example[query_field]
+        pos_psgs = [p['title'] + " " + p['text'] for p in unstack_element(example[pos_field])]
+        neg_psgs = [p['title'] + " " + p['text'] for p in unstack_element(example[neg_field])]
 
         example['query_input_ids'] = dict(tokenize(query, max_length=data_args.q_max_len))
         example['pos_psgs_input_ids'] = [dict(tokenize(x, max_length=data_args.p_max_len)) for x in pos_psgs]
@@ -475,7 +491,8 @@ def main():
         return example
 
     train_data = train_dataset.map(
-        tokenize_train,
+        # tokenize_train,
+        partial(tokenize_train,query_field="question",pos_field="positive_ctxs",neg_field="hard_negative_ctxs"),
         batched=False,
         num_proc=data_args.dataset_proc_num,
         desc="Running tokenizer on train dataset",
