@@ -432,7 +432,10 @@ def package(result):
     keys = list(result[0].keys())
     batch = {}
     for key in keys:
-        batch[key] = np.array([res[key] for res in result]).squeeze(-2)
+        try:
+            batch[key] = np.array([res[key] for res in result]).squeeze(-2)
+        except ValueError:
+            print([np.array(res[key]).shape for res in result])
     return batch   
 
 def get_dataloader(data, batch_size):
