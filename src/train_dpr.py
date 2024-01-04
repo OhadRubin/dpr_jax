@@ -1,9 +1,5 @@
 
 
-import os
-# os.system("sudo kill -9 $(sudo lsof -w /dev/accel0 | awk 'NR>1{print $2}' |uniq)")
-import time
-# time.sleep(5)
 from functools import partial
 
 import jax
@@ -57,7 +53,7 @@ from transformers import (
 import os
 from dataclasses import dataclass, field
 from typing import Optional, List
-from src.data import IterableTrain,DatasetWrapper,IterableDatasetWrapper
+from src.data import IterableTrain,DatasetWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -289,7 +285,7 @@ def cache_grad(encode_fn):
         return grads
     return f
 
-import numpy as np
+
 def unchunk_args(axis: int = 0, argnums: Iterable[int] = ()):
     def decorator_unchunk(f):
         def g(*args, **kwargs):
@@ -637,32 +633,27 @@ def main():
     logger.info(f"  Total optimization steps = {total_train_steps}")
 
     train_metrics = []
-    rng, eval_rng = jax.random.split(rng)
-    eval_batch_idx = jax.random.permutation(eval_rng, len(validation_dataset))
-    iterable_valid = IterableTrain(validation_dataset, eval_batch_idx, 0)
-    validation_loader = prefetch_to_device(
-        iter(DataLoader(iterable_valid,
-            num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
-        ), 2)
-    rng, input_rng = jax.random.split(rng)
-
-    steps_per_epoch = len(train_dataset) // train_batch_size
-    def create_iterable_train(input_rng):
-        epoch = 0
-        while epoch<num_epochs:
-            batch_idx = jax.random.permutation(input_rng, len(train_dataset))
-            batch_idx = batch_idx[: steps_per_epoch * train_batch_size]
-            batch_idx = batch_idx.reshape((steps_per_epoch, train_batch_size)).tolist()
-            iterable_train = IterableTrain(train_dataset, batch_idx, epoch)
-            yield from iterable_train
-            epoch = epoch+1
-    iterable_train = IterableDatasetWrapper(create_iterable_train(input_rng))
-    train_loader = prefetch_to_device(
-        iter(DataLoader(iterable_train,
-            num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
-        ), 2)
     for epoch in tqdm(range(num_epochs), desc=f"Epoch ... (1/{num_epochs})", position=0):
         # ======================== Training ================================
+        # Create sampling rng
+        rng, input_rng = jax.random.split(rng)
+
+        steps_per_epoch = len(train_dataset) // train_batch_size
+
+        batch_idx = jax.random.permutation(input_rng, len(train_dataset))
+        batch_idx = batch_idx[: steps_per_epoch * train_batch_size]
+        batch_idx = batch_idx.reshape((steps_per_epoch, train_batch_size)).tolist()
+        iterable_train = IterableTrain(train_dataset, batch_idx, epoch)
+        iterable_valid = IterableTrain(validation_dataset, batch_idx, epoch)
+        train_loader = prefetch_to_device(
+            iter(DataLoader(iterable_train,
+                num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
+            ), 2)
+        validation_loader = prefetch_to_device(
+            iter(DataLoader(iterable_valid,
+                num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
+            ), 2)
+
         # train
         epochs = tqdm(range(steps_per_epoch), desc="Training...", position=1, leave=False)
         for step in epochs:
