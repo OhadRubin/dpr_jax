@@ -526,6 +526,10 @@ def main():
                             data_files=data_files)
     train_dataset = dataset["train"]
     validation_dataset = dataset["validation"]
+    train_dataset = train_dataset.filter(lambda x: len(x['positive_ctxs']) > 0 and len(x['hard_negative_ctxs']) >= data_args.train_n_passages,
+                                         num_proc=data_args.dataset_proc_num)
+    validation_dataset = validation_dataset.filter(lambda x: len(x['positive_ctxs']) > 0 and len(x['hard_negative_ctxs']) >= data_args.train_n_passages,
+                                                   num_proc=data_args.dataset_proc_num)
 
     def tokenize_examples(example,query_field="query",pos_field="positive_passages",neg_field="negative_passages"):
         tokenize = partial(tokenizer, return_attention_mask=False, return_token_type_ids=False, padding=True,
