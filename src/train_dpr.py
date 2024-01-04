@@ -53,7 +53,7 @@ from transformers import (
 import os
 from dataclasses import dataclass, field
 from typing import Optional, List
-from data import IterableTrain,TrainDataset
+from src.data import IterableTrain,TrainDataset
 
 logger = logging.getLogger(__name__)
 
@@ -495,7 +495,7 @@ def main():
 
 
 
-    train_dataset = TrainDataset(train_data, data_args.train_n_passages, tokenizer)
+    train_dataset = TrainDataset(train_data, data_args.train_n_passages, tokenizer, data_args.p_max_len)
 
     def create_learning_rate_fn(
             train_ds_size: int, train_batch_size: int, num_train_epochs: int, num_warmup_steps: int,
