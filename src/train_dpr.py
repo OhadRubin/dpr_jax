@@ -633,6 +633,11 @@ def main():
     logger.info(f"  Total optimization steps = {total_train_steps}")
 
     train_metrics = []
+    iterable_valid = IterableTrain(validation_dataset, batch_idx, 0)
+    validation_loader = prefetch_to_device(
+        iter(DataLoader(iterable_valid,
+            num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
+        ), 2)
     for epoch in tqdm(range(num_epochs), desc=f"Epoch ... (1/{num_epochs})", position=0):
         # ======================== Training ================================
         # Create sampling rng
@@ -644,13 +649,8 @@ def main():
         batch_idx = batch_idx[: steps_per_epoch * train_batch_size]
         batch_idx = batch_idx.reshape((steps_per_epoch, train_batch_size)).tolist()
         iterable_train = IterableTrain(train_dataset, batch_idx, epoch)
-        iterable_valid = IterableTrain(validation_dataset, batch_idx, epoch)
         train_loader = prefetch_to_device(
             iter(DataLoader(iterable_train,
-                num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
-            ), 2)
-        validation_loader = prefetch_to_device(
-            iter(DataLoader(iterable_valid,
                 num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
             ), 2)
 
@@ -679,7 +679,7 @@ def main():
                     eval_metrics.append({'loss': loss})
                 eval_metrics = get_metrics(eval_metrics)
                 print(
-                    f"Eval result: : Step: ({cur_step} | Loss: {eval_metrics['loss'].mean()},"
+                    f"Eval result: : Step: ({cur_step} | Loss: {eval_metrics['loss'].mean()},",
                     flush=True,
                 )
                 
