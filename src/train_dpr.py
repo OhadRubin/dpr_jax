@@ -633,7 +633,9 @@ def main():
     logger.info(f"  Total optimization steps = {total_train_steps}")
 
     train_metrics = []
-    iterable_valid = IterableTrain(validation_dataset, np.arange(len(validation_dataset)), 0)
+    rng, eval_rng = jax.random.split(rng)
+    eval_batch_idx = jax.random.permutation(eval_rng, len(validation_dataset))
+    iterable_valid = IterableTrain(validation_dataset, eval_batch_idx, 0)
     validation_loader = prefetch_to_device(
         iter(DataLoader(iterable_valid,
             num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
