@@ -468,7 +468,7 @@ def main():
 
     if data_args.train_dir:
         data_files = {
-            'train': data_args.train_path.split(",")
+            'train': data_args.train_path
         }
     else:
         data_files = None
