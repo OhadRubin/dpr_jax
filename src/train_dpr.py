@@ -633,7 +633,7 @@ def main():
     logger.info(f"  Total optimization steps = {total_train_steps}")
 
     train_metrics = []
-    iterable_valid = IterableTrain(validation_dataset, batch_idx, 0)
+    iterable_valid = IterableTrain(validation_dataset, np.arange(len(validation_dataset)), 0)
     validation_loader = prefetch_to_device(
         iter(DataLoader(iterable_valid,
             num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
