@@ -464,7 +464,7 @@ def unstack_element(element,n_examples=None):
                 raise
         yield micro_element
 import numpy as np
-
+import time
 def main():
     parser = HfArgumentParser((ModelArguments, DataArguments, TevatronTrainingArguments))
 
@@ -696,6 +696,8 @@ def main():
             batch = shard(next(train_loader))
             batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
             print(jax.tree_map(lambda x: x.shape, batch))
+            time.sleep(100)
+            exit()
 
             loss, state, dropout_rngs = p_train_step(state, *batch, dropout_rngs)
             train_metrics.append({'loss': loss})
