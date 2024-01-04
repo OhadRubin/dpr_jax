@@ -436,6 +436,7 @@ def package(result):
             batch[key] = np.array([res[key] for res in result]).squeeze(-2)
         except ValueError:
             print([np.array(res[key]).shape for res in result])
+            raise
     return batch   
 
 def get_dataloader(data, batch_size):
