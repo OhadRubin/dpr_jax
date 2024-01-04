@@ -410,7 +410,7 @@ def main():
         )
 
 
-    model_args = ModelArguments("bert-base-uncased")
+    # model_args = ModelArguments("bert-base-uncased")
     # data_args = DataArguments(dataset_name="castorini/mr-tydi",config_name="english")
 
 
