@@ -530,12 +530,6 @@ def main():
                             data_files=data_files)
     train_dataset = dataset["train"]
     validation_dataset = dataset["validation"]
-    train_dataset = train_dataset.filter(lambda x: len(x['positive_ctxs']) > 0 and len(x['hard_negative_ctxs']) >= data_args.train_n_passages,
-                                         batched=False,
-                                         num_proc=data_args.dataset_proc_num)
-    validation_dataset = validation_dataset.filter(lambda x: len(x['positive_ctxs']) > 0 and len(x['hard_negative_ctxs']) >= data_args.train_n_passages,
-                                                   batched=False,
-                                                   num_proc=data_args.dataset_proc_num)
 
     def tokenize_examples(example,query_field="query",pos_field="positive_passages",neg_field="negative_passages"):
         tokenize = partial(tokenizer, return_attention_mask=False, return_token_type_ids=False, padding=True,
@@ -553,7 +547,8 @@ def main():
         
 
         return dict(query_input_ids=query_input_ids, psgs_input_ids=psgs_input_ids)
-
+    
+    
     train_data = train_dataset.map(
         partial(tokenize_examples,query_field="question",pos_field="positive_ctxs",neg_field="hard_negative_ctxs"),
         batched=False,
@@ -561,6 +556,8 @@ def main():
         remove_columns=train_dataset.column_names,
         desc="Running tokenizer on train dataset",
     )
+    train_data = train_data.filter(function=lambda data: len(data["psgs_input_ids"]) >= data_args.train_n_passages , num_proc=data_args.dataset_proc_num)
+    validation_data = validation_data.filter(function=lambda data: len(data["psgs_input_ids"]) >= data_args.train_n_passages , num_proc=data_args.dataset_proc_num)
     validation_data = validation_dataset.map(
         partial(tokenize_examples,query_field="question",pos_field="positive_ctxs",neg_field="hard_negative_ctxs"),
         batched=False,
