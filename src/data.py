@@ -12,12 +12,19 @@ class IterableTrain(IterableDataset):
             batch = self.dataset.get_batch(idx, self.epoch)
             batch = shard(batch)
             yield batch
+            
+
+
 class IterableDatasetWrapper(IterableDataset):
-    def __init__(self, itr):
+    def __init__(self, dataset):
         super(IterableDatasetWrapper).__init__()
-        self.iter = itr
+        self.dataset = dataset
     def __iter__(self):
-        return iter(self.iter)
+        while True:
+            for x in self.dataset:
+                yield x
+            self.dataset = self.dataset.shuffle()
+
     
 def get_example(i, epoch, group_size, data):
     example = data[i]
@@ -25,8 +32,8 @@ def get_example(i, epoch, group_size, data):
 
     pp = example['pos_psgs_input_ids']
     p = pp[0]
-
     nn = example['neg_psgs_input_ids']
+
     off = epoch * (group_size - 1) % len(nn)
     nn = nn * 2
     nn = nn[off: off + group_size - 1]

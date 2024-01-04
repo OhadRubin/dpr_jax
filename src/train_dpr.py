@@ -418,6 +418,33 @@ def grad_cache_train_step(state, queries, passages, dropout_rng, axis='device', 
 
 
 
+class IterableDatasetWrapper(IterableDataset):
+    def __init__(self, dataset):
+        super(IterableDatasetWrapper).__init__()
+        self.dataset = dataset
+    def __iter__(self):
+        while True:
+            for x in self.dataset:
+                yield x
+            self.dataset = self.dataset.shuffle()
+
+def package(result):
+    keys = list(result[0].keys())
+    batch = {}
+    for key in keys:
+        batch[key] = np.array([res[key] for res in result]).squeeze(-2)
+    return batch   
+
+def get_dataloader(data, batch_size):
+    iterable = IterableDatasetWrapper(data) 
+    dloader= DataLoader(iterable,
+                            batch_size=batch_size,
+                            collate_fn=lambda v: package(v)
+                            )
+    return dloader
+
+
+
 
 def unstack_element(element,n_examples=None):
     keys = list(element.keys())
@@ -432,7 +459,7 @@ def unstack_element(element,n_examples=None):
                 print([(key,len(element[key])) for key in keys])
                 raise
         yield micro_element
-        
+import numpy as np
 
 def main():
     parser = HfArgumentParser((ModelArguments, DataArguments, TevatronTrainingArguments))
@@ -504,38 +531,36 @@ def main():
         tokenize = partial(tokenizer, return_attention_mask=False, return_token_type_ids=False, padding=False,
                             truncation=True)
         query = example[query_field]
-        pos_psgs = [p['title'] + " " + p['text'] for p in list(unstack_element(example[pos_field]))[:5]]
-        neg_psgs = [p['title'] + " " + p['text'] for p in list(unstack_element(example[neg_field]))[:5]]
+        pos_psgs = [p['title'] + " " + p['text'] for p in list(unstack_element(example[pos_field]))[:1]]
+        neg_psgs = [p['title'] + " " + p['text'] for p in list(unstack_element(example[neg_field]))[:data_args.train_n_passages]]
+        def tok(x,l):
+            return dict(tokenize(x, max_length=l,padding='max_length', return_tensors='np'))["input_ids"]
+            
+        query_input_ids = tok(query, data_args.q_max_len)
+        psgs_input_ids = pos_psgs+neg_psgs
+        psgs_input_ids = [tok(x,data_args.p_max_len) for x in psgs_input_ids ] 
+        psgs_input_ids = np.stack(psgs_input_ids)
+        
 
-        example['query_input_ids'] = dict(tokenize(query, max_length=data_args.q_max_len))
-        example['pos_psgs_input_ids'] = [dict(tokenize(x, max_length=data_args.p_max_len)) for x in pos_psgs]
-        example['neg_psgs_input_ids'] = [dict(tokenize(x, max_length=data_args.p_max_len)) for x in neg_psgs]
-
-        return example
+        return dict(query_input_ids=query_input_ids, psgs_input_ids=psgs_input_ids)
 
     train_data = train_dataset.map(
         partial(tokenize_examples,query_field="question",pos_field="positive_ctxs",neg_field="hard_negative_ctxs"),
         batched=False,
         num_proc=data_args.dataset_proc_num,
+        remove_columns=train_dataset.column_names,
         desc="Running tokenizer on train dataset",
-    )
-    train_data = train_data.filter(
-        function=lambda data: len(data["pos_psgs_input_ids"]) >= 1 and \
-                                len(data["neg_psgs_input_ids"]) >= data_args.train_n_passages-1, num_proc=64
     )
     validation_data = validation_dataset.map(
         partial(tokenize_examples,query_field="question",pos_field="positive_ctxs",neg_field="hard_negative_ctxs"),
         batched=False,
         num_proc=data_args.dataset_proc_num,
+        remove_columns=validation_data.column_names,
         desc="Running tokenizer on validation dataset",
     )
-    validation_data = validation_data.filter(
-        function=lambda data: len(data["pos_psgs_input_ids"]) >= 1 and \
-                                len(data["neg_psgs_input_ids"]) >= data_args.validation_n_passages-1, num_proc=64
-    )
 
-    train_dataset = DatasetWrapper(train_data, data_args.train_n_passages, tokenizer, data_args.p_max_len)
-    validation_dataset = DatasetWrapper(validation_data, data_args.train_n_passages, tokenizer, data_args.p_max_len)
+    # train_dataset = DatasetWrapper(train_data, data_args.train_n_passages, tokenizer, data_args.p_max_len)
+    # validation_dataset = DatasetWrapper(validation_data, data_args.train_n_passages, tokenizer, data_args.p_max_len)
     try:
         model = FlaxAutoModel.from_pretrained(
             model_args.model_name_or_path, config=config, seed=training_args.seed, dtype=getattr(jnp, model_args.dtype)
@@ -633,6 +658,8 @@ def main():
     logger.info(f"  Total optimization steps = {total_train_steps}")
 
     train_metrics = []
+    train_loader = get_dataloader(train_data,train_batch_size)
+    validation_loader = get_dataloader(train_data,train_batch_size)
     for epoch in tqdm(range(num_epochs), desc=f"Epoch ... (1/{num_epochs})", position=0):
         # ======================== Training ================================
         # Create sampling rng
@@ -640,19 +667,19 @@ def main():
 
         steps_per_epoch = len(train_dataset) // train_batch_size
 
-        batch_idx = jax.random.permutation(input_rng, len(train_dataset))
-        batch_idx = batch_idx[: steps_per_epoch * train_batch_size]
-        batch_idx = batch_idx.reshape((steps_per_epoch, train_batch_size)).tolist()
-        iterable_train = IterableTrain(train_dataset, batch_idx, epoch)
-        iterable_valid = IterableTrain(validation_dataset, batch_idx, epoch)
-        train_loader = prefetch_to_device(
-            iter(DataLoader(iterable_train,
-                num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
-            ), 2)
-        validation_loader = prefetch_to_device(
-            iter(DataLoader(iterable_valid,
-                num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
-            ), 2)
+        # batch_idx = jax.random.permutation(input_rng, len(train_dataset))
+        # batch_idx = batch_idx[: steps_per_epoch * train_batch_size]
+        # batch_idx = batch_idx.reshape((steps_per_epoch, train_batch_size)).tolist()
+        # iterable_train = IterableTrain(train_dataset, batch_idx, epoch)
+        # iterable_valid = IterableTrain(validation_dataset, batch_idx, epoch)
+        # train_loader = prefetch_to_device(
+        #     iter(DataLoader(iterable_train,
+        #         num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
+        #     ), 2)
+        # validation_loader = prefetch_to_device(
+        #     iter(DataLoader(iterable_valid,
+        #         num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
+        #     ), 2)
 
         # train
         epochs = tqdm(range(steps_per_epoch), desc="Training...", position=1, leave=False)
