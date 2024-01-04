@@ -528,7 +528,7 @@ def main():
     validation_dataset = dataset["validation"]
 
     def tokenize_examples(example,query_field="query",pos_field="positive_passages",neg_field="negative_passages"):
-        tokenize = partial(tokenizer, return_attention_mask=False, return_token_type_ids=False, padding=False,
+        tokenize = partial(tokenizer, return_attention_mask=False, return_token_type_ids=False, padding=True,
                             truncation=True)
         query = example[query_field]
         pos_psgs = [p['title'] + " " + p['text'] for p in list(unstack_element(example[pos_field]))[:1]]
