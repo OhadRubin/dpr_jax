@@ -441,7 +441,7 @@ def get_dataloader(data, batch_size):
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v)
                             )
-    return dloader
+    return iter(dloader)
 
 
 
