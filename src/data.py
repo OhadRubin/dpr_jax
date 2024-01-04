@@ -12,7 +12,13 @@ class IterableTrain(IterableDataset):
             batch = self.dataset.get_batch(idx, self.epoch)
             batch = shard(batch)
             yield batch
-            
+class IterableDatasetWrapper(IterableDataset):
+    def __init__(self, itr):
+        super(IterableDatasetWrapper).__init__()
+        self.iter = itr
+    def __iter__(self):
+        return iter(self.iter)
+    
 def get_example(i, epoch, group_size, data):
     example = data[i]
     q = example['query_input_ids']

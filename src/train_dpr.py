@@ -53,7 +53,7 @@ from transformers import (
 import os
 from dataclasses import dataclass, field
 from typing import Optional, List
-from src.data import IterableTrain,DatasetWrapper
+from src.data import IterableTrain,DatasetWrapper,IterableDatasetWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -652,15 +652,13 @@ def main():
             iterable_train = IterableTrain(train_dataset, batch_idx, epoch)
             yield from iterable_train
             epoch = epoch+1
-    iterable_train = create_iterable_train(input_rng)
+    iterable_train = IterableDatasetWrapper(create_iterable_train(input_rng))
     train_loader = prefetch_to_device(
         iter(DataLoader(iterable_train,
             num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
         ), 2)
     for epoch in tqdm(range(num_epochs), desc=f"Epoch ... (1/{num_epochs})", position=0):
         # ======================== Training ================================
-        # Create sampling rng
-
         # train
         epochs = tqdm(range(steps_per_epoch), desc="Training...", position=1, leave=False)
         for step in epochs:
