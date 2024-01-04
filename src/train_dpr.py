@@ -53,7 +53,7 @@ from transformers import (
 import os
 from dataclasses import dataclass, field
 from typing import Optional, List
-from src.data import IterableTrain,TrainDataset
+from src.data import IterableTrain,DatasetWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,9 @@ logger = logging.getLogger(__name__)
 class DataArguments:
     train_dir: str = field(
         default=None, metadata={"help": "Path to train directory"}
+    )
+    valid_dir: str = field(
+        default=None, metadata={"help": "Path to validation directory"}
     )
     dataset_name: str = field(
         default="parquet", metadata={"help": "huggingface dataset name"}
@@ -119,19 +122,13 @@ class DataArguments:
             self.dataset_split = 'train'
             self.dataset_language = 'default'
         if self.train_dir is not None:
-            if os.path.isdir(self.train_dir):
-                files = os.listdir(self.train_dir)
-                # change all train directory paths to absolute
-                self.train_dir = os.path.join(os.path.abspath(os.getcwd()), self.train_dir)
-                self.train_path = [
-                    os.path.join(self.train_dir, f)
-                    for f in files
-                    if f.endswith('jsonl') or f.endswith('json')
-                ]
-            else:
-                self.train_path = self.train_dir.split(",")
+            self.train_path = self.train_dir.split(",")
         else:
             self.train_path = None
+        if self.valid_dir is not None:
+            self.valid_path = self.valid_dir.split(",")
+        else:
+            self.valid_path = None
 
 
 
@@ -186,7 +183,7 @@ class TevatronTrainingArguments:
     gc_q_chunk_size: int = field(default=4)
     gc_p_chunk_size: int = field(default=32)
     do_train: bool = field(default=False, metadata={"help": "Whether to run training."})
-    num_train_epochs: float = field(default=3.0, metadata={"help": "Total number of training epochs to perform."})
+    num_train_epochs: float = field(default=30.0, metadata={"help": "Total number of training epochs to perform."})
     learning_rate: float = field(default=5e-5, metadata={"help": "The initial learning rate for AdamW."})
     weight_decay: float = field(default=0.0, metadata={"help": "Weight decay for AdamW if we apply some."})
     adam_beta1: float = field(default=0.9, metadata={"help": "Beta1 for AdamW optimizer"})
@@ -211,8 +208,23 @@ class TevatronTrainingArguments:
         default=10,
         metadata={
             "help": (
-                "Log every X updates steps. Should be an integer or a float in range `[0,1)`. "
-                "If smaller than 1, will be interpreted as ratio of total training steps."
+                "Log every X updates steps. Should be an integer"
+            )
+        },
+    )
+    eval_steps: float = field(
+        default=100,
+        metadata={
+            "help": (
+                "Eval every X updates steps. Should be an integer."
+            )
+        },
+    )
+    n_eval_steps: float = field(
+        default=10,
+        metadata={
+            "help": (
+                "Eval every X updates steps. Should be an integer."
             )
         },
     )
@@ -357,6 +369,21 @@ def retriever_train_step(state, queries, passages, dropout_rng, axis='device'):
 
     return loss, new_state, new_dropout_rng
 
+def retriever_eval_step(state, queries, passages, dropout_rng, axis='device'):
+    q_dropout_rng, p_dropout_rng, new_dropout_rng = jax.random.split(dropout_rng, 3)
+
+    def compute_loss(params):
+        q_reps = state.apply_fn(**queries, params=params.q_params, dropout_rng=q_dropout_rng, train=True)[0][:, 0, :]
+        p_reps = state.apply_fn(**passages, params=params.p_params, dropout_rng=p_dropout_rng, train=True)[0][:, 0, :]
+        return jnp.mean(p_contrastive_loss(q_reps, p_reps, axis=axis))
+
+    loss = compute_loss(state.params)
+    loss = jax.lax.pmean(loss, axis)
+
+    # new_state = state.apply_gradients(grads=grad)
+
+    return loss, state, new_dropout_rng
+
 
 def grad_cache_train_step(state, queries, passages, dropout_rng, axis='device', q_n_subbatch=1, p_n_subbatch=1):
 
@@ -461,16 +488,18 @@ def main():
 
     if data_args.train_dir:
         data_files = {
-            'train': data_args.train_path
+            'train': data_args.train_path, "validation": data_args.valid_path
         }
     else:
         data_files = None
 
-    train_dataset = \
-        datasets.load_dataset(data_args.dataset_name, data_args.config_name, cache_dir=model_args.cache_dir,
-                                data_files=data_files)[data_args.dataset_split]
+    dataset = datasets.load_dataset(data_args.dataset_name, data_args.config_name,
+                              cache_dir=model_args.cache_dir,
+                            data_files=data_files)
+    train_dataset = dataset["train"]
+    validation_dataset = dataset["validation"]
 
-    def tokenize_train(example,query_field="query",pos_field="positive_passages",neg_field="negative_passages"):
+    def tokenize_examples(example,query_field="query",pos_field="positive_passages",neg_field="negative_passages"):
         tokenize = partial(tokenizer, return_attention_mask=False, return_token_type_ids=False, padding=False,
                             truncation=True)
         query = example[query_field]
@@ -484,7 +513,7 @@ def main():
         return example
 
     train_data = train_dataset.map(
-        partial(tokenize_train,query_field="question",pos_field="positive_ctxs",neg_field="hard_negative_ctxs"),
+        partial(tokenize_examples,query_field="question",pos_field="positive_ctxs",neg_field="hard_negative_ctxs"),
         batched=False,
         num_proc=data_args.dataset_proc_num,
         desc="Running tokenizer on train dataset",
@@ -493,10 +522,19 @@ def main():
         function=lambda data: len(data["pos_psgs_input_ids"]) >= 1 and \
                                 len(data["neg_psgs_input_ids"]) >= data_args.train_n_passages-1, num_proc=64
     )
+    validation_data = validation_dataset.map(
+        partial(tokenize_examples,query_field="question",pos_field="positive_ctxs",neg_field="hard_negative_ctxs"),
+        batched=False,
+        num_proc=data_args.dataset_proc_num,
+        desc="Running tokenizer on validation dataset",
+    )
+    validation_data = validation_data.filter(
+        function=lambda data: len(data["pos_psgs_input_ids"]) >= 1 and \
+                                len(data["neg_psgs_input_ids"]) >= data_args.validation_n_passages-1, num_proc=64
+    )
 
-
-
-    train_dataset = TrainDataset(train_data, data_args.train_n_passages, tokenizer, data_args.p_max_len)
+    train_dataset = DatasetWrapper(train_data, data_args.train_n_passages, tokenizer, data_args.p_max_len)
+    validation_dataset = DatasetWrapper(validation_data, data_args.train_n_passages, tokenizer, data_args.p_max_len)
     try:
         model = FlaxAutoModel.from_pretrained(
             model_args.model_name_or_path, config=config, seed=training_args.seed, dtype=getattr(jnp, model_args.dtype)
@@ -575,6 +613,10 @@ def main():
             retriever_train_step,
             "device"
         )
+    p_eval_step = jax.pmap(
+        retriever_eval_step,
+        "device"
+    )
 
     state = jax_utils.replicate(state)
     rng = jax.random.PRNGKey(training_args.seed)
@@ -601,8 +643,13 @@ def main():
         batch_idx = batch_idx[: steps_per_epoch * train_batch_size]
         batch_idx = batch_idx.reshape((steps_per_epoch, train_batch_size)).tolist()
         iterable_train = IterableTrain(train_dataset, batch_idx, epoch)
+        iterable_valid = IterableTrain(train_dataset, batch_idx, epoch)
         train_loader = prefetch_to_device(
             iter(DataLoader(iterable_train,
+                num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
+            ), 2)
+        validation_loader = prefetch_to_device(
+            iter(DataLoader(iterable_valid,
                 num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
             ), 2)
 
@@ -623,6 +670,19 @@ def main():
                     flush=True,
                 )
                 train_metrics = []
+            if cur_step % training_args.eval_steps == 0 and cur_step > 0:
+                eval_metrics = []
+                for _ in tqdm(range(training_args.n_eval_steps), desc="Evaluating...", position=2, leave=False):
+                    batch = next(validation_loader)
+                    loss, state, dropout_rngs = p_eval_step(state, *batch, dropout_rngs)
+                    eval_metrics.append({'loss': loss})
+                eval_metrics = get_metrics(eval_metrics)
+                print(
+                    f"Step... ({cur_step} | Loss: {eval_metrics['loss'].mean()},"
+                    f" Learning Rate: {linear_decay_lr_schedule_fn(cur_step)})",
+                    flush=True,
+                )
+                
 
         epochs.write(
             f"Epoch... ({epoch + 1}/{num_epochs})"

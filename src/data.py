@@ -13,7 +13,7 @@ class IterableTrain(IterableDataset):
             batch = shard(batch)
             yield batch
             
-class TrainDataset:
+class DatasetWrapper:
     def __init__(self, train_data, group_size, tokenizer, p_max_len):
         self.group_size = group_size
         self.data = train_data
