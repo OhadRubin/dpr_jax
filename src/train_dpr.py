@@ -128,7 +128,7 @@ class DataArguments:
                     if f.endswith('jsonl') or f.endswith('json')
                 ]
             else:
-                self.train_path = [self.train_dir]
+                self.train_path = self.train_dir.split(",")
         else:
             self.train_path = None
 
