@@ -659,7 +659,7 @@ def main():
 
     train_metrics = []
     train_loader = get_dataloader(train_data,train_batch_size)
-    validation_loader = get_dataloader(train_data,train_batch_size)
+    validation_loader = get_dataloader(validation_data,train_batch_size)
     for epoch in tqdm(range(num_epochs), desc=f"Epoch ... (1/{num_epochs})", position=0):
         # ======================== Training ================================
         # Create sampling rng
