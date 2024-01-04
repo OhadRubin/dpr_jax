@@ -65,7 +65,7 @@ class DataArguments:
     dataset_name: str = field(
         default="castorini/mr-tydi", metadata={"help": "huggingface dataset name"}
     )
-    config_name: str = field(
+    ds_config_name: str = field(
         default="english", metadata={"help": "huggingface dataset config name"}
     )
     passage_field_separator: str = field(default=' ')
@@ -107,6 +107,7 @@ class DataArguments:
             info = self.dataset_name.split('/')
             self.dataset_split = info[-1] if len(info) == 3 else 'train'
             self.dataset_name = "/".join(info[:-1]) if len(info) == 3 else '/'.join(info)
+            self.config_name  = self.ds_config_name
             self.dataset_language = 'default'
             if ':' in self.dataset_name:
                 self.dataset_name, self.dataset_language = self.dataset_name.split(':')
@@ -408,15 +409,6 @@ def main():
         raise ValueError(
             f"Output directory ({training_args.output_dir}) already exists and is not empty. Use --overwrite_output_dir to overcome."
         )
-
-
-    # model_args = ModelArguments("bert-base-uncased")
-    # data_args = DataArguments(dataset_name="castorini/mr-tydi",config_name="english")
-
-
-    # training_args = TevatronTrainingArguments(output_dir="blabla")
-
-
 
     if (
             os.path.exists(training_args.output_dir)
