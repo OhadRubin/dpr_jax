@@ -457,15 +457,7 @@ def main():
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
     )
-    try:
-        model = FlaxAutoModel.from_pretrained(
-            model_args.model_name_or_path, config=config, seed=training_args.seed, dtype=getattr(jnp, model_args.dtype)
-        )
-    except:
-        model = FlaxAutoModel.from_pretrained(
-            model_args.model_name_or_path, config=config, seed=training_args.seed, dtype=getattr(jnp, model_args.dtype),
-            from_pt=True
-        )
+
 
     if data_args.train_dir:
         data_files = {
@@ -505,7 +497,15 @@ def main():
 
 
     train_dataset = TrainDataset(train_data, data_args.train_n_passages, tokenizer, data_args.p_max_len)
-
+    try:
+        model = FlaxAutoModel.from_pretrained(
+            model_args.model_name_or_path, config=config, seed=training_args.seed, dtype=getattr(jnp, model_args.dtype)
+        )
+    except:
+        model = FlaxAutoModel.from_pretrained(
+            model_args.model_name_or_path, config=config, seed=training_args.seed, dtype=getattr(jnp, model_args.dtype),
+            from_pt=True
+        )
     def create_learning_rate_fn(
             train_ds_size: int, train_batch_size: int, num_train_epochs: int, num_warmup_steps: int,
             learning_rate: float
