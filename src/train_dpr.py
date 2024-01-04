@@ -285,7 +285,7 @@ def cache_grad(encode_fn):
         return grads
     return f
 
-
+import numpy as np
 def unchunk_args(axis: int = 0, argnums: Iterable[int] = ()):
     def decorator_unchunk(f):
         def g(*args, **kwargs):
