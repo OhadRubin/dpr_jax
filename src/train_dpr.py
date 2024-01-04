@@ -474,8 +474,8 @@ def main():
         tokenize = partial(tokenizer, return_attention_mask=False, return_token_type_ids=False, padding=False,
                             truncation=True)
         query = example[query_field]
-        pos_psgs = [p['title'] + " " + p['text'] for p in unstack_element(example[pos_field])[:5]]
-        neg_psgs = [p['title'] + " " + p['text'] for p in unstack_element(example[neg_field])[:5]]
+        pos_psgs = [p['title'] + " " + p['text'] for p in list(unstack_element(example[pos_field]))[:5]]
+        neg_psgs = [p['title'] + " " + p['text'] for p in list(unstack_element(example[neg_field]))[:5]]
 
         example['query_input_ids'] = dict(tokenize(query, max_length=data_args.q_max_len))
         example['pos_psgs_input_ids'] = [dict(tokenize(x, max_length=data_args.p_max_len)) for x in pos_psgs]
