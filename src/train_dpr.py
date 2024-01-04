@@ -637,6 +637,7 @@ def main():
         # ======================== Training ================================
         # Create sampling rng
         rng, input_rng = jax.random.split(rng)
+        
 
         steps_per_epoch = len(train_dataset) // train_batch_size
 
@@ -660,6 +661,8 @@ def main():
             cur_step = epoch * (len(train_dataset) // train_batch_size) + step
             batch = next(train_loader)
 
+            print(jax.tree_map(lambda v: v.shape , batch))
+            exit()
             loss, state, dropout_rngs = p_train_step(state, *batch, dropout_rngs)
             train_metrics.append({'loss': loss})
 
