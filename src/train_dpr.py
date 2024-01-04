@@ -54,7 +54,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional, List
 from src.data import IterableTrain,DatasetWrapper
-
+from flax.training.common_utils import get_metrics, shard
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -685,7 +685,8 @@ def main():
         epochs = tqdm(range(steps_per_epoch), desc="Training...", position=1, leave=False)
         for step in epochs:
             cur_step = epoch * (len(train_dataset) // train_batch_size) + step
-            batch = next(train_loader)
+            batch = shard(next(train_loader))
+            batch = batch['query_input_ids'],batch['psgs_input_ids']
 
             loss, state, dropout_rngs = p_train_step(state, *batch, dropout_rngs)
             train_metrics.append({'loss': loss})
