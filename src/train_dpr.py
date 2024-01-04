@@ -555,7 +555,7 @@ def main():
         partial(tokenize_examples,query_field="question",pos_field="positive_ctxs",neg_field="hard_negative_ctxs"),
         batched=False,
         num_proc=data_args.dataset_proc_num,
-        remove_columns=validation_data.column_names,
+        remove_columns=validation_dataset.column_names,
         desc="Running tokenizer on validation dataset",
     )
 
