@@ -67,7 +67,8 @@ class DataArguments:
         # default="castorini/mr-tydi", metadata={"help": "huggingface dataset name"}
     )
     ds_config_name: str = field(
-        default="default", metadata={"help": "huggingface dataset config name"}
+        default=None, metadata={"help": "huggingface dataset config name"}
+        # default="default", metadata={"help": "huggingface dataset config name"}
         # default="english", metadata={"help": "huggingface dataset config name"}
     )
     passage_field_separator: str = field(default=' ')
