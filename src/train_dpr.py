@@ -644,7 +644,7 @@ def main():
         batch_idx = batch_idx[: steps_per_epoch * train_batch_size]
         batch_idx = batch_idx.reshape((steps_per_epoch, train_batch_size)).tolist()
         iterable_train = IterableTrain(train_dataset, batch_idx, epoch)
-        iterable_valid = IterableTrain(train_dataset, batch_idx, epoch)
+        iterable_valid = IterableTrain(validation_dataset, batch_idx, epoch)
         train_loader = prefetch_to_device(
             iter(DataLoader(iterable_train,
                 num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
