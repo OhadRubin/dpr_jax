@@ -679,8 +679,7 @@ def main():
                     eval_metrics.append({'loss': loss})
                 eval_metrics = get_metrics(eval_metrics)
                 print(
-                    f"Step... ({cur_step} | Loss: {eval_metrics['loss'].mean()},"
-                    f" Learning Rate: {linear_decay_lr_schedule_fn(cur_step)})",
+                    f"Eval result: : Step: ({cur_step} | Loss: {eval_metrics['loss'].mean()},"
                     flush=True,
                 )
                 
