@@ -694,7 +694,7 @@ def main():
         for step in epochs:
             cur_step = epoch * (len(train_dataset) // train_batch_size) + step
             batch = shard(next(train_loader))
-            batch = batch['query_input_ids'],batch['psgs_input_ids']
+            batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
 
             loss, state, dropout_rngs = p_train_step(state, *batch, dropout_rngs)
             train_metrics.append({'loss': loss})
@@ -712,7 +712,7 @@ def main():
                 for _ in tqdm(range(training_args.n_eval_steps), desc="Evaluating...", position=2, leave=False):
                     batch = next(validation_loader)
                     batch = shard(next(validation_loader))
-                    batch = batch['query_input_ids'],batch['psgs_input_ids']
+                    batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
                     loss, state, dropout_rngs = p_eval_step(state, *batch, dropout_rngs)
                     eval_metrics.append({'loss': loss})
                 eval_metrics = get_metrics(eval_metrics)
