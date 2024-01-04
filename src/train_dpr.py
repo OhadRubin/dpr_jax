@@ -539,7 +539,7 @@ def main():
         query_input_ids = tok(query, data_args.q_max_len)
         psgs_input_ids = pos_psgs+neg_psgs
         psgs_input_ids = [tok(x,data_args.p_max_len) for x in psgs_input_ids ] 
-        # psgs_input_ids = np.stack(psgs_input_ids)
+        psgs_input_ids = np.stack(psgs_input_ids)
         
 
         return dict(query_input_ids=query_input_ids, psgs_input_ids=psgs_input_ids)
