@@ -1,63 +1,35 @@
-from flax.training.common_utils import get_metrics, shard
-from torch.utils.data import DataLoader, IterableDataset
-class IterableTrain(IterableDataset):
-    def __init__(self, dataset, batch_idx, epoch):
-        super(IterableTrain).__init__()
-        self.dataset = dataset
-        self.batch_idx = batch_idx
-        self.epoch = epoch
+from transformers import AutoTokenizer
+import datasets
+import numpy as np
+import seqio
+import jax
+from transformer import tasks
 
-    def __iter__(self):
-        for idx in self.batch_idx:
-            batch = self.dataset.get_batch(idx, self.epoch)
-            batch = shard(batch)
-            yield batch
-            
+def extract_dpr_examples(element, tokenizer):
+    neig = element["neig"]
+    targets = element["targets"]
+    chunk_id_list ,candidate_idx_list, candidate_rank_list = neig.reshape([-1,3]).T
+    chunks = targets.reshape([-1,64])
+    examples_dict = dict()
+    for chunk_id,candidate_idx,candidate_rank in zip(chunk_id_list ,candidate_idx_list, candidate_rank_list):
+        if chunk_id not in examples_dict:
+            examples_dict[chunk_id] = {"question":tokenizer.decode(chunks[chunk_id]), "positive_ctxs":[], "hard_negative_ctxs":[]}
+        if candidate_rank<3:
+            examples_dict[chunk_id]["positive_ctxs"].append({"text":tokenizer.decode(chunks[candidate_idx])})
+        if candidate_rank>15:
+            examples_dict[chunk_id]["hard_negative_ctxs"].append({"text":tokenizer.decode(chunks[candidate_idx])})
+    yield from list(examples_dict.values())
 
-
-class IterableDatasetWrapper(IterableDataset):
-    def __init__(self, dataset):
-        super(IterableDatasetWrapper).__init__()
-        self.dataset = dataset
-    def __iter__(self):
-        while True:
-            for x in self.dataset:
-                yield x
-            self.dataset = self.dataset.shuffle()
-
-    
-def get_example(i, epoch, group_size, data):
-    example = data[i]
-    q = example['query_input_ids']
-
-    pp = example['pos_psgs_input_ids']
-    p = pp[0]
-    nn = example['neg_psgs_input_ids']
-
-    off = epoch * (group_size - 1) % len(nn)
-    nn = nn * 2
-    nn = nn[off: off + group_size - 1]
-
-    return q, [p] + nn
-
-
-def get_batch(indices, epoch, p_max_len, tokenizer, group_size, data):
-    qq, dd = zip(*[get_example(i, epoch, group_size, data) for i in map(int, indices)])
-    dd = sum(dd, [])
-    return dict(tokenizer.pad(qq, max_length=32, padding='max_length', return_tensors='np')), dict(
-        tokenizer.pad(dd, max_length=p_max_len, padding='max_length', return_tensors='np'))
-    
-    
-class DatasetWrapper:
-    def __init__(self, train_data, group_size, tokenizer, p_max_len):
-        self.group_size = group_size
-        self.data = train_data
-        self.tokenizer = tokenizer
-        self.p_max_len = p_max_len
-    def __len__(self):
-        return len(self.data)
-    
-    def get_batch(self, indices, epoch):
-        return get_batch(indices, epoch, self.p_max_len, self.tokenizer, self.group_size, self.data)
-
-
+def get_dataset(name, split):
+    def gen():
+        tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
+        task = seqio.get_mixture_or_task(f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wtokens")
+        train_set = task.get_dataset(split=split,
+                                    sequence_length=None,
+                                    shard_info=seqio.ShardInfo(jax.process_index(),jax.process_count()))
+        examples = iter(train_set.as_numpy_iterator())
+        for x in examples:
+            for y in extract_dpr_examples(x, tokenizer):
+                yield y
+    dataset = datasets.IterableDataset.from_generator(gen)
+    return dataset

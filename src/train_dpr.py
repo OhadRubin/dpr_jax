@@ -588,7 +588,10 @@ def main():
                            padding=True,
                            truncation=True)
         def parse_psg(p):
-            return "Passage: "+ p['title'] + " " + p['text']
+            if "title" in p:
+                return "Passage: "+ p['title'] + " " + p['text']
+            else:
+                return "Passage: "+ p['text']
         query = "Question: "+str(example[query_field])
         pos_psgs = [parse_psg(p) for p in list(unstack_element(example[pos_field]))]
         neg_psgs = [parse_psg(p) for p in list(unstack_element(example[neg_field]))]
