@@ -10,14 +10,15 @@ def extract_dpr_examples(element, tokenizer):
     targets = element["targets"]
     chunk_id_list ,candidate_idx_list, candidate_rank_list = neig.reshape([-1,3]).T
     chunks = targets.reshape([-1,64])
+    chunks = tokenizer.batch_decode(chunks, skip_special_tokens=True)
     examples_dict = dict()
     for chunk_id,candidate_idx,candidate_rank in zip(chunk_id_list ,candidate_idx_list, candidate_rank_list):
         if chunk_id not in examples_dict:
-            examples_dict[chunk_id] = {"question":tokenizer.decode(chunks[chunk_id]), "positive_ctxs":[], "hard_negative_ctxs":[]}
+            examples_dict[chunk_id] = {"question":chunks[chunk_id], "positive_ctxs":[], "hard_negative_ctxs":[]}
         if candidate_rank<3:
-            examples_dict[chunk_id]["positive_ctxs"].append({"text":tokenizer.decode(chunks[candidate_idx])})
-        if candidate_rank>15:
-            examples_dict[chunk_id]["hard_negative_ctxs"].append({"text":tokenizer.decode(chunks[candidate_idx])})
+            examples_dict[chunk_id]["positive_ctxs"].append({"text":chunks[candidate_idx]})
+        if candidate_rank>13:
+            examples_dict[chunk_id]["hard_negative_ctxs"].append({"text":chunks[candidate_idx]})
     yield from list(examples_dict.values())
 
 def get_dataset(name, split):
@@ -34,4 +35,5 @@ def get_dataset(name, split):
     dataset = list(gen())
     dataset = datasets.Dataset.from_list(gen)
     dataset = dataset.shuffle(seed=42)
+    
     return dataset
