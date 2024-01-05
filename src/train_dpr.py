@@ -71,6 +71,7 @@ class DataArguments:
         default="parquet", metadata={"help": "huggingface dataset name"}
         # default="castorini/mr-tydi", metadata={"help": "huggingface dataset name"}
     )
+    streaming: bool = field(default=False, metadata={"help": "streaming dataset"})
     ds_config_name: str = field(
         default=None, metadata={"help": "huggingface dataset config name"}
         # default="default", metadata={"help": "huggingface dataset config name"}
@@ -542,6 +543,7 @@ def main():
 
     dataset = datasets.load_dataset(data_args.dataset_name, data_args.config_name,
                               cache_dir=model_args.cache_dir,
+                              streaming=data_args.streaming,
                             data_files=data_files)
     train_dataset = dataset["train"]
     train_dataset = split_dataset_by_node(train_dataset, jax.process_index(), jax.process_count())
