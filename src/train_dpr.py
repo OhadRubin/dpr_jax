@@ -380,9 +380,6 @@ def retriever_eval_step(state, queries, passages, dropout_rng, axis='device'):
 
     loss = compute_loss(state.params)
     loss = jax.lax.pmean(loss, axis)
-
-    # new_state = state.apply_gradients(grads=grad)
-
     return loss, state, new_dropout_rng
 from einops import rearrange
 
@@ -470,6 +467,7 @@ def unstack_element(element,n_examples=None):
                 raise
         yield micro_element
 import numpy as np
+from datasets.distributed import split_dataset_by_node
 import time
 def main():
     parser = HfArgumentParser((ModelArguments, DataArguments, TevatronTrainingArguments))
@@ -535,7 +533,9 @@ def main():
                               cache_dir=model_args.cache_dir,
                             data_files=data_files)
     train_dataset = dataset["train"]
+    train_dataset = split_dataset_by_node(train_dataset, jax.process_index(), jax.process_count())
     validation_dataset = dataset["validation"]
+    validation_dataset = split_dataset_by_node(validation_dataset, jax.process_index(), jax.process_count())
 
     def tokenize_examples(example,query_field="query",pos_field="positive_passages",neg_field="negative_passages"):
         tokenize = partial(tokenizer, return_attention_mask=False, return_token_type_ids=False, padding=True,
@@ -573,8 +573,6 @@ def main():
     )
     validation_data = validation_data.filter(function=lambda data: len(data["psgs_input_ids"]) > data_args.train_n_passages , num_proc=data_args.dataset_proc_num)
 
-    # train_dataset = DatasetWrapper(train_data, data_args.train_n_passages, tokenizer, data_args.p_max_len)
-    # validation_dataset = DatasetWrapper(validation_data, data_args.train_n_passages, tokenizer, data_args.p_max_len)
     try:
         model = FlaxAutoModel.from_pretrained(
             model_args.model_name_or_path, config=config, seed=training_args.seed, dtype=getattr(jnp, model_args.dtype)
@@ -677,23 +675,9 @@ def main():
     for epoch in tqdm(range(num_epochs), desc=f"Epoch ... (1/{num_epochs})", position=0):
         # ======================== Training ================================
         # Create sampling rng
-        rng, input_rng = jax.random.split(rng)
 
         steps_per_epoch = len(train_dataset) // train_batch_size
 
-        # batch_idx = jax.random.permutation(input_rng, len(train_dataset))
-        # batch_idx = batch_idx[: steps_per_epoch * train_batch_size]
-        # batch_idx = batch_idx.reshape((steps_per_epoch, train_batch_size)).tolist()
-        # iterable_train = IterableTrain(train_dataset, batch_idx, epoch)
-        # iterable_valid = IterableTrain(validation_dataset, batch_idx, epoch)
-        # train_loader = prefetch_to_device(
-        #     iter(DataLoader(iterable_train,
-        #         num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
-        #     ), 2)
-        # validation_loader = prefetch_to_device(
-        #     iter(DataLoader(iterable_valid,
-        #         num_workers=16, prefetch_factor=256, batch_size=None, collate_fn=lambda v: v)
-        #     ), 2)
 
         # train
         epochs = tqdm(range(steps_per_epoch), desc="Training...", position=1, leave=False)
