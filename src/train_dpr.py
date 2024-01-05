@@ -469,7 +469,9 @@ def unstack_element(element,n_examples=None):
 import numpy as np
 from datasets.distributed import split_dataset_by_node
 import time
+import wandb
 def main():
+    wandb.init(project="dpr_jax")
     parser = HfArgumentParser((ModelArguments, DataArguments, TevatronTrainingArguments))
 
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
@@ -683,11 +685,15 @@ def main():
 
         if step % training_args.logging_steps == 0 and step > 0:
             train_metrics = get_metrics(train_metrics)
+            loss = train_metrics['loss'].mean()
+            lr = linear_decay_lr_schedule_fn(step)
             print(
-                f"Step... ({step} | Loss: {train_metrics['loss'].mean()},"
-                f" Learning Rate: {linear_decay_lr_schedule_fn(step)})",
+                f"Step... ({step} | Loss: {loss},"
+                f" Learning Rate: {lr})",
                 flush=True,
             )
+            wandb.log({"train/loss":loss,"lr":lr})
+            
             train_metrics = []
         if step % training_args.eval_steps == 0 and step > 0:
             eval_metrics = []
@@ -697,10 +703,13 @@ def main():
                 loss, state, dropout_rngs = p_eval_step(state, *batch, dropout_rngs)
                 eval_metrics.append({'loss': loss})
             eval_metrics = get_metrics(eval_metrics)
+            loss = eval_metrics['loss'].mean()
+            
             print(
-                f"Eval result: : Step: ({step} | Loss: {eval_metrics['loss'].mean()},",
+                f"Eval result: : Step: ({step} | Loss: {loss},",
                 flush=True,
             )
+            wandb.log({"validation/loss":loss})
                 
 
 
