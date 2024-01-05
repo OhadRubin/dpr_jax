@@ -14,7 +14,7 @@ def extract_dpr_examples(element, tokenizer):
     chunks = targets.reshape([-1,64])
     chunks = tokenizer.batch_decode(chunks, skip_special_tokens=True)
     examples_dict = dict()
-    final_list = []
+    
     for chunk_id,candidate_idx,candidate_rank in zip(chunk_id_list ,candidate_idx_list, candidate_rank_list):
         if chunk_id not in examples_dict:
             examples_dict[chunk_id] = {"question":chunks[chunk_id], "positive_ctxs":[], "hard_negative_ctxs":[]}
@@ -22,6 +22,7 @@ def extract_dpr_examples(element, tokenizer):
             examples_dict[chunk_id]["positive_ctxs"].append({"text":chunks[candidate_idx]})
         if candidate_rank==19:
             examples_dict[chunk_id]["hard_negative_ctxs"].append({"text":chunks[candidate_idx]})
+    final_list = []
     for value in examples_dict.values():
         if len(value["positive_ctxs"])==1 and len(value["hard_negative_ctxs"])==1:
             final_list.append(value)
