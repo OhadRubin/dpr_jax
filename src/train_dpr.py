@@ -443,6 +443,7 @@ def format_example(x, n_passages, top_elements):
     el = dict(query_input_ids=x["query_input_ids"],query_attention_mask=x["query_attention_mask"],
                 psgs_input_ids=psgs_input_ids,psgs_attention_mask=psgs_attention_mask)
     return el
+import numpy as np
 class IterableDatasetWrapper(IterableDataset):
     def __init__(self, dataset, streaming,n_passages,top_elements=None):
         super(IterableDatasetWrapper).__init__()
@@ -453,13 +454,14 @@ class IterableDatasetWrapper(IterableDataset):
     def __iter__(self):
         cnt = 1
         while True:
-            
+            self.dataset = list(self.dataset)
             for x in self.dataset:
                 el = format_example(x,self.n_passages,self.top_elements)
                 if el is None:
                     continue
                 
                 yield el
+            np.random.shuffle(self.dataset)
             # self.dataset = self.dataset.shuffle(seed=42+cnt,
             #                                     # **(dict(buffer_size=1000) if self.streaming else {})
             #                                     )
