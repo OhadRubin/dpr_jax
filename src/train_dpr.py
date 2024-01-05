@@ -53,7 +53,7 @@ from transformers import (
 import os
 from dataclasses import dataclass, field
 from typing import Optional, List
-from src.data import get_dataset
+# from src.data import get_dataset
 from flax.training.common_utils import get_metrics, shard
 from collections import namedtuple
 ParamTuple = namedtuple("ParamTuple","q_params p_params")
@@ -617,8 +617,12 @@ def main():
             else:
                 return "Passage: "+ p['text']
         query = "Question: "+str(example[query_field])
-        pos_psgs = [parse_psg(p) for p in list(unstack_element(example[pos_field]))]
-        neg_psgs = [parse_psg(p) for p in list(unstack_element(example[neg_field]))]
+        if isinstance(example[pos_field],dict):
+            pos_psgs = [parse_psg(p) for p in list(unstack_element(example[pos_field]))]
+            neg_psgs = [parse_psg(p) for p in list(unstack_element(example[neg_field]))]
+        else:
+            pos_psgs = [parse_psg(p) for p in example[pos_field]]
+            neg_psgs = [parse_psg(p) for p in example[neg_field]]
         def tok(x,l):
             return dict(tokenize(x, max_length=l,padding='max_length', return_tensors='np'))
         _query = tok(query, data_args.q_max_len)
