@@ -55,6 +55,8 @@ from dataclasses import dataclass, field
 from typing import Optional, List
 from src.data import IterableTrain,DatasetWrapper
 from flax.training.common_utils import get_metrics, shard
+from collections import namedtuple
+ParamTuple = namedtuple("ParamTuple","q_params p_params")
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -642,12 +644,12 @@ def main():
         mask=decay_mask_fn,
     )
 
-    # if model_args.untie_encoder:
-    #     params = DualParams.create(model.params)
-    # else:
-    from collections import namedtuple
-    ParamTuple = namedtuple("ParamTuple","params q_params p_params")
-    params = ParamTuple(params=model.params,q_params=model.params,p_params=model.params)
+
+    if model_args.untie_encoder:
+        model_copy = jax.tree_map(jnp.copy, model.params)
+        params = ParamTuple(q_params=model.params,p_params=model_copy)
+    else:
+        params = ParamTuple(q_params=model.params,p_params=model.params)
     state = RetrieverTrainState.create(apply_fn=model.__call__, params=params, tx=adamw)
 
     if training_args.grad_cache:
@@ -686,8 +688,6 @@ def main():
     for step in tqdm(range(num_train_steps), position=0):
         # ======================== Training ================================
         batch = next(train_loader)
-        # batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
-
         loss, state, dropout_rngs = p_train_step(state, *batch, dropout_rngs)
         train_metrics.append({'loss': loss})
 
