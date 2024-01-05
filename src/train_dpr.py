@@ -384,7 +384,7 @@ def retriever_eval_step(state, queries, passages, dropout_rng, axis='device'):
     # new_state = state.apply_gradients(grads=grad)
 
     return loss, state, new_dropout_rng
-
+from einops import rearrange
 
 def grad_cache_train_step(state, queries, passages, dropout_rng, axis='device', q_n_subbatch=1, p_n_subbatch=1):
 
@@ -433,7 +433,10 @@ def package(result):
     batch = {}
     for key in keys:
         try:
-            batch[key] = np.array([res[key] for res in result]).squeeze(-2)
+            arr = np.array([res[key] for res in result]).squeeze(-2)
+            if key in ["psgs_input_ids"]:
+                arr = rearrange(arr,'b p n d -> b (p n) d')
+            batch[key] = arr
         except ValueError:
             print([np.array(res[key]).shape for res in result])
             raise
@@ -443,7 +446,9 @@ def get_dataloader(data, batch_size):
     iterable = IterableDatasetWrapper(data) 
     dloader= DataLoader(iterable,
                             batch_size=batch_size,
-                            collate_fn=lambda v: package(v)
+                            collate_fn=lambda v: package(v),
+                            num_workers=16,
+                            prefetch_factor=64,
                             )
     return iter(dloader)
 
