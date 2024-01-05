@@ -434,6 +434,7 @@ def package(result):
     for key in keys:
         try:
             arr = np.array([res[key] for res in result]).squeeze(-2)
+            arr = shard(arr)
             if key in ["psgs_input_ids"]:
                 arr = rearrange(arr,'b p n d -> b (p n) d')
             batch[key] = arr
@@ -698,7 +699,7 @@ def main():
         epochs = tqdm(range(steps_per_epoch), desc="Training...", position=1, leave=False)
         for step in epochs:
             cur_step = epoch * (len(train_dataset) // train_batch_size) + step
-            batch = shard(next(train_loader))
+            batch = next(train_loader)
             batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
             print(jax.tree_map(lambda x: x.shape, batch))
             time.sleep(100)
@@ -719,7 +720,7 @@ def main():
                 eval_metrics = []
                 for _ in tqdm(range(training_args.n_eval_steps), desc="Evaluating...", position=2, leave=False):
                     batch = next(validation_loader)
-                    batch = shard(next(validation_loader))
+                    batch = next(validation_loader)
                     batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
                     loss, state, dropout_rngs = p_eval_step(state, *batch, dropout_rngs)
                     eval_metrics.append({'loss': loss})
