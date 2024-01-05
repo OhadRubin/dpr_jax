@@ -29,7 +29,7 @@ def get_dataset(name, split):
     train_set = task.get_dataset(split=split,
                                 sequence_length=None,
                                 shard_info=seqio.ShardInfo(jax.process_index(),jax.process_count()))
-    examples = list(tqdm(train_set.as_numpy_iterator(),desc="Loading examples"))
+    examples = list(tqdm(train_set.take(2000).as_numpy_iterator(),desc="Loading examples"))
     extract_dpr_examples_w_tok =  partial(extract_dpr_examples, tokenizer=tokenizer)
     with Pool(64) as p:
         examples = list(tqdm(p.imap(extract_dpr_examples_w_tok, examples), total=len(examples), desc="Extracting examples"))
