@@ -1,12 +1,34 @@
 
 # import os
 # os.system("sudo kill -9 $(sudo lsof -w /dev/accel0 | awk 'NR>1{print $2}' |uniq)")
+import os
+
+os.system("sudo kill -9 $(sudo lsof -w /dev/accel0 | awk 'NR>1{print $2}' |uniq)")
+os.system("sudo kill -9 $(sudo lsof -w /dev/accel1 | awk 'NR>1{print $2}' |uniq)")
+os.system("sudo kill -9 $(sudo lsof -w /dev/accel2 | awk 'NR>1{print $2}' |uniq)")
+os.system("sudo kill -9 $(sudo lsof -w /dev/accel3 | awk 'NR>1{print $2}' |uniq)")
+
+
+# os.system('if  pgrep -f -a "ht_main.py" ; then killall -q -w -s SIGKILL ht_main.py ; fi')
+os.system('rm -rf /tmp/libtpu_lockfile /tmp/tpu_logs')
+
+import os
+
+if "DEBUG" in os.environ:
+  #alternative: python -m debugpy --wait-for-client --listen localhost:5678 `which seqio_cache_tasks` arg1 arg2
+  os.system('kill -9 $(lsof -t -i tcp:5678)')
+  import debugpy
+  debugpy.listen(5678)
+  print("Waiting for debugger attach")
+  debugpy.wait_for_client()
+import jax
+print(jax.devices())
+
+
 from functools import partial
 
 import jax
 import jax.numpy as jnp
-
-
 
 
 from functools import partial
@@ -27,8 +49,6 @@ import chex
 from typing import Iterable, Any
 from functools import partial
 
-import jax
-import jax.numpy as jnp
 
 from typing import Any
 import jax
