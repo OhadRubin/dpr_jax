@@ -515,7 +515,7 @@ def get_dataloader(data, batch_size, streaming, n_passages):
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v),
                             num_workers=16,
-                            prefetch_factor=64,
+                            prefetch_factor=256,
                             )
     return iter(dloader)
 from datasets import IterableDataset

@@ -14,14 +14,18 @@ def extract_dpr_examples(element, tokenizer):
     chunks = targets.reshape([-1,64])
     chunks = tokenizer.batch_decode(chunks, skip_special_tokens=True)
     examples_dict = dict()
+    final_list = []
     for chunk_id,candidate_idx,candidate_rank in zip(chunk_id_list ,candidate_idx_list, candidate_rank_list):
         if chunk_id not in examples_dict:
             examples_dict[chunk_id] = {"question":chunks[chunk_id], "positive_ctxs":[], "hard_negative_ctxs":[]}
-        if candidate_rank<3:
+        if candidate_rank==0:
             examples_dict[chunk_id]["positive_ctxs"].append({"text":chunks[candidate_idx]})
-        if candidate_rank>13:
+        if candidate_rank==19:
             examples_dict[chunk_id]["hard_negative_ctxs"].append({"text":chunks[candidate_idx]})
-    return list(examples_dict.values())
+        if len(examples_dict[chunk_id]["positive_ctxs"])==1 and len(examples_dict[chunk_id]["hard_negative_ctxs"])==1:
+            final_list.append(examples_dict[chunk_id])
+            del examples_dict[chunk_id]
+    return final_list
 
 def get_dataset(name:str, split:str):
     shard_id = jax.process_index()
