@@ -40,7 +40,7 @@ def get_dataset(name:str, split:str):
     gen = sum(tqdm(examples,desc="Summing examples"), [])
     dataset = datasets.Dataset.from_list(gen)
     dataset = dataset.shuffle(seed=42)
-    dataset.save_to_disk(f"gs://meliad2_us2/datasets/dpr_datasets/{name}/hfformat_{shard_id}-{num_shards}")
+    dataset.save_to_disk(f"gs://meliad2_us2/datasets/dpr_datasets/{name}_one_tenth/{split}/hfformat_{shard_id}-{num_shards}")
     
     # return dataset
 
