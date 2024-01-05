@@ -672,22 +672,11 @@ def main():
     train_metrics = []
     train_loader = get_dataloader(train_data,train_batch_size)
     validation_loader = get_dataloader(validation_data,train_batch_size)
-    epochs = tqdm(range(steps_per_epoch), desc="Training...", position=1, leave=False)
-    for step in tqdm(range(total_train_steps), desc=f"Step ... (1/{num_epochs})", position=0):
+
+    for step in tqdm(range(total_train_steps), desc=f"Step ... (1/{total_train_steps})", position=0):
         # ======================== Training ================================
-        # Create sampling rng
-
-        steps_per_epoch = len(train_dataset) // train_batch_size
-
-
-        # train
-        
-
         batch = next(train_loader)
         batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
-        # print(jax.tree_map(lambda x: x.shape, batch))
-        # time.sleep(100)
-        # exit()
 
         loss, state, dropout_rngs = p_train_step(state, *batch, dropout_rngs)
         train_metrics.append({'loss': loss})
