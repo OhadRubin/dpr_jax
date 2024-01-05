@@ -420,6 +420,29 @@ def grad_cache_train_step(state, queries, passages, dropout_rng, axis='device', 
 
 
 import random
+def format_example(x, n_passages, top_elements):
+    neg_psgs_input_ids = x["neg_psgs_input_ids"]
+    neg_psgs_attention_mask = x["neg_psgs_attention_mask"]
+    if len(neg_psgs_input_ids)<(n_passages-1):
+        return None
+    neg_cand_idxs = list(range(len(neg_psgs_input_ids)))
+    random.shuffle(neg_cand_idxs)
+    neg_idx = neg_cand_idxs[:n_passages-1]
+    neg_psgs_input_ids = [neg_psgs_input_ids[i] for i in neg_idx]
+    neg_psgs_attention_mask = [neg_psgs_attention_mask[i] for i in neg_idx]
+    pos_psgs_input_ids = x["pos_psgs_input_ids"][:top_elements]
+    pos_psgs_attention_mask = x["pos_psgs_attention_mask"][:top_elements]
+    pos_cand_idxs = list(range(len(pos_psgs_input_ids)))
+    random.shuffle(pos_cand_idxs)
+    pos_idx = pos_cand_idxs[0]
+    pos_psgs_input_ids = pos_psgs_input_ids[pos_idx]
+    pos_psgs_attention_mask = pos_psgs_attention_mask[pos_idx]
+    psgs_input_ids = np.array([pos_psgs_input_ids] + neg_psgs_input_ids)
+    psgs_attention_mask = np.array([pos_psgs_attention_mask] + neg_psgs_attention_mask)
+    
+    el = dict(query_input_ids=x["query_input_ids"],query_attention_mask=x["query_attention_mask"],
+                psgs_input_ids=psgs_input_ids,psgs_attention_mask=psgs_attention_mask)
+    return el
 class IterableDatasetWrapper(IterableDataset):
     def __init__(self, dataset, streaming,n_passages,top_elements=None):
         super(IterableDatasetWrapper).__init__()
@@ -431,27 +454,11 @@ class IterableDatasetWrapper(IterableDataset):
         cnt = 1
         while True:
             for x in self.dataset:
-                neg_psgs_input_ids = x["neg_psgs_input_ids"]
-                neg_psgs_attention_mask = x["neg_psgs_attention_mask"]
-                if len(neg_psgs_input_ids)<(self.n_passages-1):
+                el = format_example(x,self.n_passages,self.top_elements)
+                if el is None:
                     continue
-                neg_cand_idxs = list(range(len(neg_psgs_input_ids)))
-                random.shuffle(neg_cand_idxs)
-                neg_idx = neg_cand_idxs[:self.n_passages-1]
-                neg_psgs_input_ids = [neg_psgs_input_ids[i] for i in neg_idx]
-                neg_psgs_attention_mask = [neg_psgs_attention_mask[i] for i in neg_idx]
-                pos_psgs_input_ids = x["pos_psgs_input_ids"][:self.top_elements]
-                pos_psgs_attention_mask = x["pos_psgs_attention_mask"][:self.top_elements]
-                pos_cand_idxs = list(range(len(pos_psgs_input_ids)))
-                random.shuffle(pos_cand_idxs)
-                pos_idx = pos_cand_idxs[0]
-                pos_psgs_input_ids = pos_psgs_input_ids[pos_idx]
-                pos_psgs_attention_mask = pos_psgs_attention_mask[pos_idx]
-                psgs_input_ids = np.array([pos_psgs_input_ids] + neg_psgs_input_ids)
-                psgs_attention_mask = np.array([pos_psgs_attention_mask] + neg_psgs_attention_mask)
                 
-                yield dict(query_input_ids=x["query_input_ids"],query_attention_mask=x["query_attention_mask"],
-                           psgs_input_ids=psgs_input_ids,psgs_attention_mask=psgs_attention_mask)
+                yield el
             self.dataset = self.dataset.shuffle(seed=42+cnt,
                                                 # **(dict(buffer_size=1000) if self.streaming else {})
                                                 )
@@ -481,7 +488,7 @@ def get_dataloader(data, batch_size, streaming, n_passages):
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v),
                             # num_workers=16,
-                            prefetch_factor=256,
+                            # prefetch_factor=256,
                             )
     return iter(dloader)
 from datasets import IterableDataset
