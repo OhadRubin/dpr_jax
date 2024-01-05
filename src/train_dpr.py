@@ -547,10 +547,12 @@ def main():
                               cache_dir=model_args.cache_dir,
                               streaming=data_args.streaming,
                             data_files=data_files)
+    train_dataset = dataset["train"]
     train_dataset = split_dataset_by_node(train_dataset, jax.process_index(), jax.process_count())
-    train_dataset = dataset["train"].shuffle(seed=42, buffer_size=1000)
+    train_dataset = train_dataset.shuffle(seed=42, buffer_size=1000)
+    validation_dataset = dataset["validation"]
     validation_dataset = split_dataset_by_node(validation_dataset, jax.process_index(), jax.process_count())
-    validation_dataset = dataset["validation"].shuffle(seed=42, buffer_size=1000)
+    validation_dataset = validation_dataset.shuffle(seed=42, buffer_size=1000)
 
     def tokenize_examples(example,query_field="query",pos_field="positive_passages",neg_field="negative_passages"):
         tokenize = partial(tokenizer, return_attention_mask=True, return_token_type_ids=False, padding=True,
