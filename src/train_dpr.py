@@ -672,7 +672,8 @@ def main():
     train_metrics = []
     train_loader = get_dataloader(train_data,train_batch_size)
     validation_loader = get_dataloader(validation_data,train_batch_size)
-    for epoch in tqdm(range(num_epochs), desc=f"Epoch ... (1/{num_epochs})", position=0):
+    epochs = tqdm(range(steps_per_epoch), desc="Training...", position=1, leave=False)
+    for step in tqdm(range(total_train_steps), desc=f"Step ... (1/{num_epochs})", position=0):
         # ======================== Training ================================
         # Create sampling rng
 
@@ -680,43 +681,40 @@ def main():
 
 
         # train
-        epochs = tqdm(range(steps_per_epoch), desc="Training...", position=1, leave=False)
-        for step in epochs:
-            cur_step = epoch * (len(train_dataset) // train_batch_size) + step
-            batch = next(train_loader)
-            batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
-            # print(jax.tree_map(lambda x: x.shape, batch))
-            # time.sleep(100)
-            # exit()
+        
 
-            loss, state, dropout_rngs = p_train_step(state, *batch, dropout_rngs)
-            train_metrics.append({'loss': loss})
+        batch = next(train_loader)
+        batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
+        # print(jax.tree_map(lambda x: x.shape, batch))
+        # time.sleep(100)
+        # exit()
 
-            if cur_step % training_args.logging_steps == 0 and cur_step > 0:
-                train_metrics = get_metrics(train_metrics)
-                print(
-                    f"Step... ({cur_step} | Loss: {train_metrics['loss'].mean()},"
-                    f" Learning Rate: {linear_decay_lr_schedule_fn(cur_step)})",
-                    flush=True,
-                )
-                train_metrics = []
-            if cur_step % training_args.eval_steps == 0 and cur_step > 0:
-                eval_metrics = []
-                for _ in tqdm(range(training_args.n_eval_steps), desc="Evaluating...", position=2, leave=False):
-                    batch = next(validation_loader)
-                    batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
-                    loss, state, dropout_rngs = p_eval_step(state, *batch, dropout_rngs)
-                    eval_metrics.append({'loss': loss})
-                eval_metrics = get_metrics(eval_metrics)
-                print(
-                    f"Eval result: : Step: ({cur_step} | Loss: {eval_metrics['loss'].mean()},",
-                    flush=True,
-                )
+        loss, state, dropout_rngs = p_train_step(state, *batch, dropout_rngs)
+        train_metrics.append({'loss': loss})
+
+        if step % training_args.logging_steps == 0 and step > 0:
+            train_metrics = get_metrics(train_metrics)
+            print(
+                f"Step... ({step} | Loss: {train_metrics['loss'].mean()},"
+                f" Learning Rate: {linear_decay_lr_schedule_fn(step)})",
+                flush=True,
+            )
+            train_metrics = []
+        if step % training_args.eval_steps == 0 and step > 0:
+            eval_metrics = []
+            for _ in tqdm(range(training_args.n_eval_steps), desc="Evaluating...", position=2, leave=False):
+                batch = next(validation_loader)
+                batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
+                loss, state, dropout_rngs = p_eval_step(state, *batch, dropout_rngs)
+                eval_metrics.append({'loss': loss})
+            eval_metrics = get_metrics(eval_metrics)
+            print(
+                f"Eval result: : Step: ({step} | Loss: {eval_metrics['loss'].mean()},",
+                flush=True,
+            )
                 
 
-        epochs.write(
-            f"Epoch... ({epoch + 1}/{num_epochs})"
-        )
+
 
     params = jax_utils.unreplicate(state.params)
 
