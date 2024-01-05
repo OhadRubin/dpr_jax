@@ -78,6 +78,9 @@ from typing import Optional, List
 # from src.data import get_dataset
 from flax.training.common_utils import get_metrics, shard
 from collections import namedtuple
+from datasets import disable_caching
+disable_caching()
+
 ParamTuple = namedtuple("ParamTuple","q_params p_params")
 logger = logging.getLogger(__name__)
 
