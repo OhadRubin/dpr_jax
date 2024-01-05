@@ -432,13 +432,17 @@ def package(result):
         try:
             arr = np.array([res[key] for res in result]).squeeze(-2)
             arr = shard(arr)
-            if key in ["psgs_input_ids"]:
-                arr = rearrange(arr,'b p n d -> b (p n) d')
+            if key in ["psgs_input_ids","psgs_attention_mask"]:
+                arr = rearrange(arr,'b p n ... -> b (p n) ...')
+            # if key in []:
+            #     arr = rearrange(arr,'b p n d -> b (p n) d')
             batch[key] = arr
         except ValueError:
             print([np.array(res[key]).shape for res in result])
             raise
-    return batch   
+    query = {"input_ids":batch['query_input_ids'],"attention_mask":batch['query_attention_mask']}
+    psgs = {"input_ids":batch['psgs_input_ids'],"attention_mask":batch['psgs_attention_mask']}
+    return query,psgs
 
 def get_dataloader(data, batch_size):
     iterable = IterableDatasetWrapper(data) 
@@ -471,7 +475,10 @@ from datasets.distributed import split_dataset_by_node
 import time
 import wandb
 def main():
-    wandb.init(project="dpr_jax")
+    is_main = jax.process_index() == 0
+    if is_main:
+        wandb.init(project="dpr_jax")
+    
     parser = HfArgumentParser((ModelArguments, DataArguments, TevatronTrainingArguments))
 
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
@@ -540,21 +547,24 @@ def main():
     validation_dataset = split_dataset_by_node(validation_dataset, jax.process_index(), jax.process_count())
 
     def tokenize_examples(example,query_field="query",pos_field="positive_passages",neg_field="negative_passages"):
-        tokenize = partial(tokenizer, return_attention_mask=False, return_token_type_ids=False, padding=True,
+        tokenize = partial(tokenizer, return_attention_mask=True, return_token_type_ids=False, padding=True,
                             truncation=True)
         query = example[query_field]
         pos_psgs = [p['title'] + " " + p['text'] for p in list(unstack_element(example[pos_field]))[:1]]
         neg_psgs = [p['title'] + " " + p['text'] for p in list(unstack_element(example[neg_field]))[:data_args.train_n_passages]]
         def tok(x,l):
-            return dict(tokenize(x, max_length=l,padding='max_length', return_tensors='np'))["input_ids"]
-            
-        query_input_ids = tok(query, data_args.q_max_len)
-        psgs_input_ids = pos_psgs+neg_psgs
-        psgs_input_ids = [tok(x,data_args.p_max_len) for x in psgs_input_ids ] 
-        psgs_input_ids = np.stack(psgs_input_ids)
-        
-
-        return dict(query_input_ids=query_input_ids, psgs_input_ids=psgs_input_ids)
+            return dict(tokenize(x, max_length=l,padding='max_length', return_tensors='np'))
+        # ["input_ids"]
+        _query = tok(query, data_args.q_max_len)
+        query_input_ids = _query["input_ids"]
+        query_attention_mask = _query["attention_mask"]
+        psgs = pos_psgs+neg_psgs
+        _psgs = [tok(x,data_args.p_max_len) for x in psgs ]
+        return dict(query_input_ids=query_input_ids,
+                    query_attention_mask=query_attention_mask,
+                    psgs_input_ids=np.stack([x["input_ids"] for x in _psgs]),
+                    psgs_attention_mask=np.stack([x["attention_mask"] for x in _psgs])
+                    )
     
     
     train_data = train_dataset.map(
@@ -678,7 +688,7 @@ def main():
     for step in tqdm(range(total_train_steps), desc=f"Step ... (1/{total_train_steps})", position=0):
         # ======================== Training ================================
         batch = next(train_loader)
-        batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
+        # batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
 
         loss, state, dropout_rngs = p_train_step(state, *batch, dropout_rngs)
         train_metrics.append({'loss': loss})
@@ -692,14 +702,14 @@ def main():
                 f" Learning Rate: {lr})",
                 flush=True,
             )
-            wandb.log({"train/loss":loss,"lr":lr})
+            if is_main:
+                wandb.log({"train/loss":loss,"lr":lr})
             
             train_metrics = []
         if step % training_args.eval_steps == 0 and step > 0:
             eval_metrics = []
             for _ in tqdm(range(training_args.n_eval_steps), desc="Evaluating...", position=2, leave=False):
                 batch = next(validation_loader)
-                batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
                 loss, state, dropout_rngs = p_eval_step(state, *batch, dropout_rngs)
                 eval_metrics.append({'loss': loss})
             eval_metrics = get_metrics(eval_metrics)
@@ -709,19 +719,20 @@ def main():
                 f"Eval result: : Step: ({step} | Loss: {loss},",
                 flush=True,
             )
-            wandb.log({"validation/loss":loss})
+            if is_main:
+                wandb.log({"validation/loss":loss})
                 
 
 
 
     params = jax_utils.unreplicate(state.params)
-
-    if model_args.untie_encoder:
-        os.makedirs(training_args.output_dir, exist_ok=True)
-        model.save_pretrained(os.path.join(training_args.output_dir, 'query_encoder'), params=params.q_params)
-        model.save_pretrained(os.path.join(training_args.output_dir, 'passage_encoder'), params=params.p_params)
-    else:
-        model.save_pretrained(training_args.output_dir, params=params.p_params)
+    if is_main:
+        if model_args.untie_encoder:
+            os.makedirs(training_args.output_dir, exist_ok=True)
+            model.save_pretrained(os.path.join(training_args.output_dir, 'query_encoder'), params=params.q_params)
+            model.save_pretrained(os.path.join(training_args.output_dir, 'passage_encoder'), params=params.p_params)
+        else:
+            model.save_pretrained(training_args.output_dir, params=params.p_params)
 
 
 if __name__ == "__main__":
