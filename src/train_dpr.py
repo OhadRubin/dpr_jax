@@ -425,10 +425,12 @@ class IterableDatasetWrapper(IterableDataset):
         super(IterableDatasetWrapper).__init__()
         self.dataset = dataset
     def __iter__(self):
+        cnt = 1
         while True:
             for x in self.dataset:
                 yield x
-            self.dataset = self.dataset.shuffle()
+            self.dataset = self.dataset.shuffle(seed=42+cnt, buffer_size=1000)
+            cnt += 1
 
 def package(result):
     keys = list(result[0].keys())
@@ -545,9 +547,9 @@ def main():
                               cache_dir=model_args.cache_dir,
                               streaming=data_args.streaming,
                             data_files=data_files)
-    train_dataset = dataset["train"]
+    train_dataset = dataset["train"].shuffle(seed=42, buffer_size=1000)
     train_dataset = split_dataset_by_node(train_dataset, jax.process_index(), jax.process_count())
-    validation_dataset = dataset["validation"]
+    validation_dataset = dataset["validation"].shuffle(seed=42, buffer_size=1000)
     validation_dataset = split_dataset_by_node(validation_dataset, jax.process_index(), jax.process_count())
 
     def tokenize_examples(example,query_field="query",pos_field="positive_passages",neg_field="negative_passages"):
