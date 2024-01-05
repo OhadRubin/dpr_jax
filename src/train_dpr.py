@@ -53,7 +53,7 @@ from transformers import (
 import os
 from dataclasses import dataclass, field
 from typing import Optional, List
-
+from src.data import get_dataset
 from flax.training.common_utils import get_metrics, shard
 from collections import namedtuple
 ParamTuple = namedtuple("ParamTuple","q_params p_params")
@@ -580,21 +580,26 @@ def main():
         }
     else:
         data_files = None
-
-    dataset = datasets.load_dataset(data_args.dataset_name, data_args.config_name,
-                              cache_dir=model_args.cache_dir,
-                              streaming=data_args.streaming,
-                            data_files=data_files)
-    train_dataset = dataset["train"]
-    train_dataset = split_dataset_by_node(train_dataset, jax.process_index(), 12)
-    train_dataset = train_dataset.shuffle(seed=42, 
-                                        #   **(dict(buffer_size=1000) if data_args.streaming else {})
-                                          )
-    validation_dataset = dataset["validation"]
-    validation_dataset = split_dataset_by_node(validation_dataset, jax.process_index(), 12)
-    validation_dataset = validation_dataset.shuffle(seed=42,
-                                                    # **(dict(buffer_size=1000) if data_args.streaming else {})
-                                                    )
+    if False:
+        dataset = datasets.load_dataset(data_args.dataset_name, data_args.config_name,
+                                  cache_dir=model_args.cache_dir,
+                                  streaming=data_args.streaming,
+                                data_files=data_files)
+        train_dataset = dataset["train"]
+        train_dataset = split_dataset_by_node(train_dataset, jax.process_index(), 12)
+        train_dataset = train_dataset.shuffle(seed=42, 
+                                            #   **(dict(buffer_size=1000) if data_args.streaming else {})
+                                              )
+        
+        validation_dataset = dataset["validation"]
+        validation_dataset = split_dataset_by_node(validation_dataset, jax.process_index(), 12)
+        validation_dataset = validation_dataset.shuffle(seed=42,
+                                                        # **(dict(buffer_size=1000) if data_args.streaming else {})
+                                                        )
+    else:
+        
+        train_dataset = get_dataset("codeparrot", "train")
+        validation_dataset = get_dataset("codeparrot", "validation")
 
     def tokenize_examples(example,
                           query_field="question",
