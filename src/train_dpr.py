@@ -701,9 +701,9 @@ def main():
             cur_step = epoch * (len(train_dataset) // train_batch_size) + step
             batch = next(train_loader)
             batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
-            print(jax.tree_map(lambda x: x.shape, batch))
-            time.sleep(100)
-            exit()
+            # print(jax.tree_map(lambda x: x.shape, batch))
+            # time.sleep(100)
+            # exit()
 
             loss, state, dropout_rngs = p_train_step(state, *batch, dropout_rngs)
             train_metrics.append({'loss': loss})
