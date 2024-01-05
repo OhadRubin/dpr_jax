@@ -419,17 +419,39 @@ def grad_cache_train_step(state, queries, passages, dropout_rng, axis='device', 
     return loss, new_state, new_rng
 
 
-
+import random
 class IterableDatasetWrapper(IterableDataset):
-    def __init__(self, dataset, streaming):
+    def __init__(self, dataset, streaming,n_passages,top_elements=3):
         super(IterableDatasetWrapper).__init__()
         self.dataset = dataset
         self.streaming = streaming
+        self.n_passages = n_passages
+        self.top_elements = top_elements
     def __iter__(self):
         cnt = 1
         while True:
             for x in self.dataset:
-                yield x
+                neg_psgs_input_ids = x["neg_psgs_input_ids"]
+                neg_psgs_attention_mask = x["neg_psgs_attention_mask"]
+                if len(neg_psgs_input_ids)<(self.n_passages-1):
+                    continue
+                neg_cand_idxs = list(range(len(neg_psgs_input_ids)))
+                random.shuffle(neg_cand_idxs)
+                neg_idx = neg_cand_idxs[:self.n_passages-1]
+                neg_psgs_input_ids = [neg_psgs_input_ids[i] for i in neg_idx]
+                neg_psgs_attention_mask = [neg_psgs_attention_mask[i] for i in neg_idx]
+                pos_psgs_input_ids = x["pos_psgs_input_ids"][:self.top_elements]
+                pos_psgs_attention_mask = x["pos_psgs_attention_mask"][:self.top_elements]
+                pos_cand_idxs = list(range(len(pos_psgs_input_ids)))
+                random.shuffle(pos_cand_idxs)
+                pos_idx = pos_cand_idxs[0]
+                pos_psgs_input_ids = pos_psgs_input_ids[pos_idx]
+                pos_psgs_attention_mask = pos_psgs_attention_mask[pos_idx]
+                psgs_input_ids = np.array([pos_psgs_input_ids] + neg_psgs_input_ids)
+                psgs_attention_mask = np.array([pos_psgs_attention_mask] + neg_psgs_attention_mask)
+                
+                yield dict(query_input_ids=x["query_input_ids"],query_attention_mask=x["query_attention_mask"],
+                           psgs_input_ids=psgs_input_ids,psgs_attention_mask=psgs_attention_mask)
             self.dataset = self.dataset.shuffle(seed=42+cnt, **(dict(buffer_size=1000) if self.streaming else {}))
             cnt += 1
 
@@ -450,8 +472,9 @@ def package(result):
     psgs = {"input_ids":batch['psgs_input_ids'],"attention_mask":batch['psgs_attention_mask']}
     return query,psgs
 
-def get_dataloader(data, batch_size, steaming):
-    iterable = IterableDatasetWrapper(data,steaming) 
+def get_dataloader(data, batch_size, streaming, n_passages):
+    
+    iterable = IterableDatasetWrapper(data, streaming, n_passages) 
     dloader= DataLoader(iterable,
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v),
@@ -555,35 +578,44 @@ def main():
     validation_dataset = split_dataset_by_node(validation_dataset, jax.process_index(), jax.process_count())
     validation_dataset = validation_dataset.shuffle(seed=42, **(dict(buffer_size=1000) if data_args.streaming else {}))
 
-    def tokenize_examples(example,query_field="query",pos_field="positive_passages",neg_field="negative_passages"):
-        tokenize = partial(tokenizer, return_attention_mask=True, return_token_type_ids=False, padding=True,
-                            truncation=True)
-        query = example[query_field]
-        pos_psgs = [p['title'] + " " + p['text'] for p in list(unstack_element(example[pos_field]))[:1]]
-        neg_psgs = [p['title'] + " " + p['text'] for p in list(unstack_element(example[neg_field]))[:data_args.train_n_passages]]
+    def tokenize_examples(example,
+                          query_field="question",
+                          pos_field="positive_ctxs",
+                          neg_field="hard_negative_ctxs"):
+        tokenize = partial(tokenizer,
+                           return_attention_mask=True,
+                           return_token_type_ids=False,
+                           padding=True,
+                           truncation=True)
+        def parse_psg(p):
+            return "Passage: "+ p['title'] + " " + p['text']
+        query = "Question: "+str(example[query_field])
+        pos_psgs = [parse_psg(p) for p in list(unstack_element(example[pos_field]))]
+        neg_psgs = [parse_psg(p) for p in list(unstack_element(example[neg_field]))]
         def tok(x,l):
             return dict(tokenize(x, max_length=l,padding='max_length', return_tensors='np'))
-        # ["input_ids"]
         _query = tok(query, data_args.q_max_len)
         query_input_ids = _query["input_ids"]
         query_attention_mask = _query["attention_mask"]
-        psgs = pos_psgs+neg_psgs
-        _psgs = [tok(x,data_args.p_max_len) for x in psgs ]
+        _pos_psgs = [tok(x,data_args.p_max_len) for x in pos_psgs ]
+        _neg_psgs = [tok(x,data_args.p_max_len) for x in neg_psgs ]
         return dict(query_input_ids=query_input_ids,
                     query_attention_mask=query_attention_mask,
-                    psgs_input_ids=np.stack([x["input_ids"] for x in _psgs]),
-                    psgs_attention_mask=np.stack([x["attention_mask"] for x in _psgs])
+                    pos_psgs_input_ids=[x["input_ids"] for x in _pos_psgs],
+                    pos_psgs_attention_mask=[x["attention_mask"] for x in _pos_psgs],
+                    neg_psgs_input_ids=[x["input_ids"] for x in _neg_psgs],
+                    neg_psgs_attention_mask=[x["attention_mask"] for x in _neg_psgs],
                     )
     
     
     train_data = train_dataset.map(
-        partial(tokenize_examples,query_field="question",pos_field="positive_ctxs",neg_field="hard_negative_ctxs"),
+        tokenize_examples,
         batched=False,
         remove_columns=train_dataset.column_names,
         **(dict(num_proc=data_args.dataset_proc_num, desc="Running tokenizer on train dataset") if not data_args.streaming else {})
     )
-    train_data = train_data.filter(function=lambda data: len(data["psgs_input_ids"]) > data_args.train_n_passages ,
-                                   **(dict(num_proc=data_args.dataset_proc_num) if not data_args.streaming else {}))
+    # train_data = train_data.filter(function=lambda data: len(data["psgs_input_ids"]) > data_args.train_n_passages ,
+    #                                **(dict(num_proc=data_args.dataset_proc_num) if not data_args.streaming else {}))
     
     validation_data = validation_dataset.map(
         partial(tokenize_examples,query_field="question",pos_field="positive_ctxs",neg_field="hard_negative_ctxs"),
@@ -591,9 +623,9 @@ def main():
         remove_columns=validation_dataset.column_names,
         **(dict(num_proc=data_args.dataset_proc_num, desc="Running tokenizer on validation dataset") if not data_args.streaming else {}),
     )
-    validation_data = validation_data.filter(function=lambda data: len(data["psgs_input_ids"]) > data_args.train_n_passages,
-                                             **(dict(num_proc=data_args.dataset_proc_num) if not data_args.streaming else {}),
-                                             )
+    # validation_data = validation_data.filter(function=lambda data: len(data["psgs_input_ids"]) > data_args.train_n_passages,
+    #                                          **(dict(num_proc=data_args.dataset_proc_num) if not data_args.streaming else {}),
+    #                                          )
 
     try:
         model = FlaxAutoModel.from_pretrained(
@@ -690,8 +722,8 @@ def main():
     logger.info(f"  Total optimization steps = {num_train_steps}")
 
     train_metrics = []
-    train_loader = get_dataloader(train_data,train_batch_size,data_args.streaming)
-    validation_loader = get_dataloader(validation_data,train_batch_size,data_args.streaming)
+    train_loader = get_dataloader(train_data,train_batch_size,data_args.streaming,data_args.train_n_passages)
+    validation_loader = get_dataloader(validation_data,train_batch_size,data_args.streaming,data_args.train_n_passages)
 
     for step in tqdm(range(num_train_steps), position=0):
         # ======================== Training ================================
