@@ -720,7 +720,6 @@ def main():
                 eval_metrics = []
                 for _ in tqdm(range(training_args.n_eval_steps), desc="Evaluating...", position=2, leave=False):
                     batch = next(validation_loader)
-                    batch = next(validation_loader)
                     batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
                     loss, state, dropout_rngs = p_eval_step(state, *batch, dropout_rngs)
                     eval_metrics.append({'loss': loss})
