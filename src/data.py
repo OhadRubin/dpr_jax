@@ -23,7 +23,7 @@ def extract_dpr_examples(element, tokenizer):
             examples_dict[chunk_id]["hard_negative_ctxs"].append({"text":chunks[candidate_idx]})
     return list(examples_dict.values())
 
-def get_dataset(name, split):
+def get_dataset(name:str, split:str):
     shard_id = jax.process_index()
     num_shards=jax.process_count()
     tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
@@ -31,7 +31,8 @@ def get_dataset(name, split):
     train_set = task.get_dataset(split=split,
                                 sequence_length=None,
                                 shard_info=seqio.ShardInfo(shard_id,num_shards))
-    examples = list(tqdm(train_set.take(2000).as_numpy_iterator(),desc="Loading examples"))
+    train_set = train_set.shard(10,0)
+    examples = list(tqdm(train_set.as_numpy_iterator(),desc="Loading examples"))
     extract_dpr_examples_w_tok =  partial(extract_dpr_examples, tokenizer=tokenizer)
     with Pool(300) as p:
         examples = list(tqdm(p.imap(extract_dpr_examples_w_tok, examples), total=len(examples), desc="Extracting examples"))
