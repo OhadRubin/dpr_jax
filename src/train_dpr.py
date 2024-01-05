@@ -521,7 +521,7 @@ import wandb
 def main():
     is_main = jax.process_index() == 0
     if is_main:
-        wandb.init(project="dpr_jax")
+        wandb.init(project="dpr_jax", resume="allow")
     
     parser = HfArgumentParser((ModelArguments, DataArguments, TevatronTrainingArguments))
 
