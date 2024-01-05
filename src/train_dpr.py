@@ -599,8 +599,8 @@ def main():
     else:
         shard_id = jax.process_index()
         num_shards=jax.process_count()
-        train_dataset = datasets.load_from_disk(f"gs://meliad2_us2/datasets/dpr_datasets/codeparrot_one_tenth/train/hfformat_{shard_id}-{num_shards}")
-        validation_dataset = datasets.load_from_disk(f"gs://meliad2_us2/datasets/dpr_datasets/codeparrot_one_tenth/validation/hfformat_{shard_id}-{num_shards}")
+        train_dataset = datasets.load_from_disk(f"gs://meliad2_us2/datasets/dpr_datasets/codeparrot_one_tenth/train/hfformat_{shard_id}-{num_shards}",)["train"]
+        validation_dataset = datasets.load_from_disk(f"gs://meliad2_us2/datasets/dpr_datasets/codeparrot_one_tenth/validation/hfformat_{shard_id}-{num_shards}")["train"]
 
     def tokenize_examples(example,
                           query_field="question",
