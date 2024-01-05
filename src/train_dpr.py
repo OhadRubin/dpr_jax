@@ -421,15 +421,16 @@ def grad_cache_train_step(state, queries, passages, dropout_rng, axis='device', 
 
 
 class IterableDatasetWrapper(IterableDataset):
-    def __init__(self, dataset):
+    def __init__(self, dataset, streaming):
         super(IterableDatasetWrapper).__init__()
         self.dataset = dataset
+        self.streaming = streaming
     def __iter__(self):
         cnt = 1
         while True:
             for x in self.dataset:
                 yield x
-            self.dataset = self.dataset.shuffle(seed=42+cnt, buffer_size=1000)
+            self.dataset = self.dataset.shuffle(seed=42+cnt, **(dict(buffer_size=1000) if self.streaming else {}))
             cnt += 1
 
 def package(result):
@@ -449,8 +450,8 @@ def package(result):
     psgs = {"input_ids":batch['psgs_input_ids'],"attention_mask":batch['psgs_attention_mask']}
     return query,psgs
 
-def get_dataloader(data, batch_size):
-    iterable = IterableDatasetWrapper(data) 
+def get_dataloader(data, batch_size, steaming):
+    iterable = IterableDatasetWrapper(data,steaming) 
     dloader= DataLoader(iterable,
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v),
@@ -549,10 +550,10 @@ def main():
                             data_files=data_files)
     train_dataset = dataset["train"]
     train_dataset = split_dataset_by_node(train_dataset, jax.process_index(), jax.process_count())
-    train_dataset = train_dataset.shuffle(seed=42, buffer_size=1000)
+    train_dataset = train_dataset.shuffle(seed=42, **(dict(buffer_size=1000) if data_args.streaming else {}))
     validation_dataset = dataset["validation"]
     validation_dataset = split_dataset_by_node(validation_dataset, jax.process_index(), jax.process_count())
-    validation_dataset = validation_dataset.shuffle(seed=42, buffer_size=1000)
+    validation_dataset = validation_dataset.shuffle(seed=42, **(dict(buffer_size=1000) if data_args.streaming else {}))
 
     def tokenize_examples(example,query_field="query",pos_field="positive_passages",neg_field="negative_passages"):
         tokenize = partial(tokenizer, return_attention_mask=True, return_token_type_ids=False, padding=True,
@@ -689,8 +690,8 @@ def main():
     logger.info(f"  Total optimization steps = {num_train_steps}")
 
     train_metrics = []
-    train_loader = get_dataloader(train_data,train_batch_size)
-    validation_loader = get_dataloader(validation_data,train_batch_size)
+    train_loader = get_dataloader(train_data,train_batch_size,data_args.streaming)
+    validation_loader = get_dataloader(validation_data,train_batch_size,data_args.streaming)
 
     for step in tqdm(range(num_train_steps), position=0):
         # ======================== Training ================================
