@@ -453,15 +453,16 @@ class IterableDatasetWrapper(IterableDataset):
     def __iter__(self):
         cnt = 1
         while True:
+            
             for x in self.dataset:
                 el = format_example(x,self.n_passages,self.top_elements)
                 if el is None:
                     continue
                 
                 yield el
-            self.dataset = self.dataset.shuffle(seed=42+cnt,
-                                                # **(dict(buffer_size=1000) if self.streaming else {})
-                                                )
+            # self.dataset = self.dataset.shuffle(seed=42+cnt,
+            #                                     # **(dict(buffer_size=1000) if self.streaming else {})
+            #                                     )
             cnt += 1
 
 def package(result):
@@ -487,8 +488,8 @@ def get_dataloader(data, batch_size, streaming, n_passages):
     dloader= DataLoader(iterable,
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v),
-                            # num_workers=16,
-                            # prefetch_factor=256,
+                            num_workers=16,
+                            prefetch_factor=256,
                             )
     return iter(dloader)
 from datasets import IterableDataset
