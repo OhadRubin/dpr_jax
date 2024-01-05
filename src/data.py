@@ -24,18 +24,27 @@ def extract_dpr_examples(element, tokenizer):
     return list(examples_dict.values())
 
 def get_dataset(name, split):
+    shard_id = jax.process_index()
+    num_shards=jax.process_count()
     tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
     task = seqio.get_mixture_or_task(f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wtokens")
     train_set = task.get_dataset(split=split,
                                 sequence_length=None,
-                                shard_info=seqio.ShardInfo(jax.process_index(),jax.process_count()))
+                                shard_info=seqio.ShardInfo(shard_id,num_shards))
     examples = list(tqdm(train_set.take(2000).as_numpy_iterator(),desc="Loading examples"))
     extract_dpr_examples_w_tok =  partial(extract_dpr_examples, tokenizer=tokenizer)
-    with Pool(64) as p:
+    with Pool(300) as p:
         examples = list(tqdm(p.imap(extract_dpr_examples_w_tok, examples), total=len(examples), desc="Extracting examples"))
     
     gen = sum(tqdm(examples,desc="Summing examples"), [])
     dataset = datasets.Dataset.from_list(gen)
     dataset = dataset.shuffle(seed=42)
+    dataset.save_to_disk(f"gs://meliad2_us2/datasets/dpr_datasets/{name}/hfformat_{shard_id}-{num_shards}")
     
     return dataset
+
+
+import fire
+
+if __name__ == "__main__":
+    fire.Fire(get_dataset)
