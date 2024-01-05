@@ -421,7 +421,7 @@ def grad_cache_train_step(state, queries, passages, dropout_rng, axis='device', 
 
 import random
 class IterableDatasetWrapper(IterableDataset):
-    def __init__(self, dataset, streaming,n_passages,top_elements=3):
+    def __init__(self, dataset, streaming,n_passages,top_elements=None):
         super(IterableDatasetWrapper).__init__()
         self.dataset = dataset
         self.streaming = streaming
