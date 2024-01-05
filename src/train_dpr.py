@@ -484,7 +484,7 @@ def get_dataloader(data, batch_size, streaming, n_passages):
                             prefetch_factor=256,
                             )
     return iter(dloader)
-
+from datasets import IterableDataset
 
 
 
