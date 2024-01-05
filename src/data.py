@@ -41,7 +41,7 @@ def get_dataset(name, split):
     dataset = dataset.shuffle(seed=42)
     dataset.save_to_disk(f"gs://meliad2_us2/datasets/dpr_datasets/{name}/hfformat_{shard_id}-{num_shards}")
     
-    return dataset
+    # return dataset
 
 
 import fire
