@@ -599,7 +599,7 @@ def main():
                                                         )
     else:
         shard_id = jax.process_index()
-        num_shards=jax.process_count()
+        num_shards = jax.process_count()
         train_dataset = datasets.load_from_disk(f"gs://meliad2_us2/datasets/dpr_datasets/codeparrot_one_tenth/train/hfformat_{shard_id}-{num_shards}",)
         validation_dataset = datasets.load_from_disk(f"gs://meliad2_us2/datasets/dpr_datasets/codeparrot_one_tenth/validation/hfformat_{shard_id}-{num_shards}")
 
@@ -613,7 +613,7 @@ def main():
                            padding=True,
                            truncation=True)
         def parse_psg(p):
-            if "title" in p:
+            if "title" in p.keys():
                 return "Passage: "+ p['title'] + " " + p['text']
             else:
                 return "Passage: "+ p['text']
