@@ -4,7 +4,9 @@ import numpy as np
 import seqio
 import jax
 from transformer import tasks
-
+from tqdm import tqdm
+from multiprocessing import Pool
+from functools import partial
 def extract_dpr_examples(element, tokenizer):
     neig = element["neig"]
     targets = element["targets"]
@@ -19,20 +21,20 @@ def extract_dpr_examples(element, tokenizer):
             examples_dict[chunk_id]["positive_ctxs"].append({"text":chunks[candidate_idx]})
         if candidate_rank>13:
             examples_dict[chunk_id]["hard_negative_ctxs"].append({"text":chunks[candidate_idx]})
-    yield from list(examples_dict.values())
+    return list(examples_dict.values())
 
 def get_dataset(name, split):
-    def gen():
-        tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
-        task = seqio.get_mixture_or_task(f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wtokens")
-        train_set = task.get_dataset(split=split,
-                                    sequence_length=None,
-                                    shard_info=seqio.ShardInfo(jax.process_index(),jax.process_count()))
-        examples = iter(train_set.as_numpy_iterator())
-        for x in examples:
-            for y in extract_dpr_examples(x, tokenizer):
-                yield y
-    dataset = list(gen())
+    tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
+    task = seqio.get_mixture_or_task(f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wtokens")
+    train_set = task.get_dataset(split=split,
+                                sequence_length=None,
+                                shard_info=seqio.ShardInfo(jax.process_index(),jax.process_count()))
+    examples = list(tqdm(train_set.as_numpy_iterator()))
+    extract_dpr_examples_w_tok =  partial(extract_dpr_examples, tokenizer=tokenizer)
+    with Pool(64) as p:
+        examples = list(tqdm(p.imap(extract_dpr_examples_w_tok, examples), total=len(examples)))
+    
+    gen = sum(tqdm(examples), [])
     dataset = datasets.Dataset.from_list(gen)
     dataset = dataset.shuffle(seed=42)
     
