@@ -31,5 +31,7 @@ def get_dataset(name, split):
         for x in examples:
             for y in extract_dpr_examples(x, tokenizer):
                 yield y
-    dataset = datasets.IterableDataset.from_generator(gen)
+    dataset = list(gen())
+    dataset = datasets.Dataset.from_list(gen)
+    dataset = dataset.shuffle()
     return dataset
