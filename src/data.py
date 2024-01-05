@@ -33,5 +33,5 @@ def get_dataset(name, split):
                 yield y
     dataset = list(gen())
     dataset = datasets.Dataset.from_list(gen)
-    dataset = dataset.shuffle()
+    dataset = dataset.shuffle(seed=42)
     return dataset
