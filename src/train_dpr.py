@@ -453,8 +453,8 @@ class IterableDatasetWrapper(IterableDataset):
         self.top_elements = top_elements
     def __iter__(self):
         cnt = 1
+        self.dataset = list(self.dataset)
         while True:
-            self.dataset = list(self.dataset)
             for x in self.dataset:
                 el = format_example(x,self.n_passages,self.top_elements)
                 if el is None:
