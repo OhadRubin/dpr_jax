@@ -31,7 +31,7 @@ def get_dataset(name:str, split:str):
     train_set = task.get_dataset(split=split,
                                 sequence_length=None,
                                 shard_info=seqio.ShardInfo(shard_id,num_shards))
-    if split!="train":
+    if split=="train":
         train_set = train_set.shard(10,0)
     examples = list(tqdm(train_set.as_numpy_iterator(),desc="Loading examples"))
     extract_dpr_examples_w_tok =  partial(extract_dpr_examples, tokenizer=tokenizer)
