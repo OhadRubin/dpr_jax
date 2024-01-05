@@ -1,6 +1,6 @@
 
-import os
-os.system("sudo kill -9 $(sudo lsof -w /dev/accel0 | awk 'NR>1{print $2}' |uniq)")
+# import os
+# os.system("sudo kill -9 $(sudo lsof -w /dev/accel0 | awk 'NR>1{print $2}' |uniq)")
 from functools import partial
 
 import jax
