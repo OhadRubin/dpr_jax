@@ -11,7 +11,8 @@ os.system("sudo kill -9 $(sudo lsof -w /dev/accel3 | awk 'NR>1{print $2}' |uniq)
 
 # os.system('if  pgrep -f -a "ht_main.py" ; then killall -q -w -s SIGKILL ht_main.py ; fi')
 os.system('rm -rf /tmp/libtpu_lockfile /tmp/tpu_logs')
-
+import time
+time.sleep(5)
 import os
 
 if "DEBUG" in os.environ:
