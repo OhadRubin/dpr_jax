@@ -519,6 +519,7 @@ from datasets.distributed import split_dataset_by_node
 import time
 import wandb
 def main():
+    print("before is_main")
     is_main = jax.process_index() == 0
     if is_main:
         wandb.init(project="dpr_jax", resume="allow")
