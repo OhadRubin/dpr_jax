@@ -453,15 +453,17 @@ class IterableDatasetWrapper(IterableDataset):
         self.top_elements = top_elements
     def __iter__(self):
         cnt = 1
-        self.dataset = list(self.dataset)
         while True:
+            dataset = []
             for x in self.dataset:
+                dataset.append(x)
                 el = format_example(x,self.n_passages,self.top_elements)
                 if el is None:
                     continue
                 
                 yield el
-            np.random.shuffle(self.dataset)
+            np.random.shuffle(dataset)
+            self.dataset = dataset 
             # self.dataset = self.dataset.shuffle(seed=42+cnt,
             #                                     # **(dict(buffer_size=1000) if self.streaming else {})
             #                                     )
@@ -490,7 +492,7 @@ def get_dataloader(data, batch_size, streaming, n_passages):
     dloader= DataLoader(iterable,
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v),
-                            num_workers=3,
+                            num_workers=16,
                             prefetch_factor=64,
                             )
     return iter(dloader)
@@ -584,12 +586,12 @@ def main():
                               streaming=data_args.streaming,
                             data_files=data_files)
     train_dataset = dataset["train"]
-    train_dataset = split_dataset_by_node(train_dataset, jax.process_index(), jax.process_count())
+    train_dataset = split_dataset_by_node(train_dataset, jax.process_index(), 12)
     train_dataset = train_dataset.shuffle(seed=42, 
                                         #   **(dict(buffer_size=1000) if data_args.streaming else {})
                                           )
     validation_dataset = dataset["validation"]
-    validation_dataset = split_dataset_by_node(validation_dataset, jax.process_index(), jax.process_count())
+    validation_dataset = split_dataset_by_node(validation_dataset, jax.process_index(), 12)
     validation_dataset = validation_dataset.shuffle(seed=42,
                                                     # **(dict(buffer_size=1000) if data_args.streaming else {})
                                                     )
