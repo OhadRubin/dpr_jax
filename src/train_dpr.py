@@ -452,7 +452,9 @@ class IterableDatasetWrapper(IterableDataset):
                 
                 yield dict(query_input_ids=x["query_input_ids"],query_attention_mask=x["query_attention_mask"],
                            psgs_input_ids=psgs_input_ids,psgs_attention_mask=psgs_attention_mask)
-            self.dataset = self.dataset.shuffle(seed=42+cnt, **(dict(buffer_size=1000) if self.streaming else {}))
+            self.dataset = self.dataset.shuffle(seed=42+cnt,
+                                                # **(dict(buffer_size=1000) if self.streaming else {})
+                                                )
             cnt += 1
 
 def package(result):
@@ -573,10 +575,14 @@ def main():
                             data_files=data_files)
     train_dataset = dataset["train"]
     train_dataset = split_dataset_by_node(train_dataset, jax.process_index(), jax.process_count())
-    train_dataset = train_dataset.shuffle(seed=42, **(dict(buffer_size=1000) if data_args.streaming else {}))
+    train_dataset = train_dataset.shuffle(seed=42, 
+                                        #   **(dict(buffer_size=1000) if data_args.streaming else {})
+                                          )
     validation_dataset = dataset["validation"]
     validation_dataset = split_dataset_by_node(validation_dataset, jax.process_index(), jax.process_count())
-    validation_dataset = validation_dataset.shuffle(seed=42, **(dict(buffer_size=1000) if data_args.streaming else {}))
+    validation_dataset = validation_dataset.shuffle(seed=42,
+                                                    # **(dict(buffer_size=1000) if data_args.streaming else {})
+                                                    )
 
     def tokenize_examples(example,
                           query_field="question",
