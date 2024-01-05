@@ -176,7 +176,8 @@ class TevatronTrainingArguments:
     output_dir: str = field(
         metadata={"help": "The output directory where the model predictions and checkpoints will be written."},
     )
-    warmup_ratio: float = field(default=0.1)
+    # warmup_ratio: float = field(default=0.1)
+    warmup_steps: int = field(default=2000)
     negatives_x_device: bool = field(default=False, metadata={"help": "share negatives across devices"})
     do_encode: bool = field(default=False, metadata={"help": "run the encoding loop"})
     seed: int = 42
@@ -184,8 +185,9 @@ class TevatronTrainingArguments:
     gc_q_chunk_size: int = field(default=4)
     gc_p_chunk_size: int = field(default=32)
     do_train: bool = field(default=False, metadata={"help": "Whether to run training."})
-    num_train_epochs: float = field(default=30.0, metadata={"help": "Total number of training epochs to perform."})
-    learning_rate: float = field(default=5e-5, metadata={"help": "The initial learning rate for AdamW."})
+    # num_train_epochs: float = field(default=30.0, metadata={"help": "Total number of training epochs to perform."})
+    num_train_steps: float = field(default=50000, metadata={"help": "Total number of training steps to perform."})
+    learning_rate: float = field(default=4e-5, metadata={"help": "The initial learning rate for AdamW."})
     weight_decay: float = field(default=0.0, metadata={"help": "Weight decay for AdamW if we apply some."})
     adam_beta1: float = field(default=0.9, metadata={"help": "Beta1 for AdamW optimizer"})
     adam_beta2: float = field(default=0.999, metadata={"help": "Beta2 for AdamW optimizer"})
@@ -203,7 +205,7 @@ class TevatronTrainingArguments:
         },
     )
     per_device_train_batch_size: int = field(
-        default=8, metadata={"help": "Batch size per GPU/TPU/MPS/NPU core/CPU for training."}
+        default=64, metadata={"help": "Batch size per GPU/TPU/MPS/NPU core/CPU for training."}
     )
     logging_steps: float = field(
         default=10,
@@ -434,8 +436,6 @@ def package(result):
             arr = shard(arr)
             if key in ["psgs_input_ids","psgs_attention_mask"]:
                 arr = rearrange(arr,'b p n ... -> b (p n) ...')
-            # if key in []:
-            #     arr = rearrange(arr,'b p n d -> b (p n) d')
             batch[key] = arr
         except ValueError:
             print([np.array(res[key]).shape for res in result])
@@ -450,7 +450,7 @@ def get_dataloader(data, batch_size):
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v),
                             num_workers=16,
-                            prefetch_factor=64,
+                            prefetch_factor=256,
                             )
     return iter(dloader)
 
@@ -595,12 +595,12 @@ def main():
             from_pt=True
         )
     def create_learning_rate_fn(
-            train_ds_size: int, train_batch_size: int, num_train_epochs: int, num_warmup_steps: int,
+            num_train_steps:int,
+            num_warmup_steps: int,
             learning_rate: float
     ):
         """Returns a linear warmup, linear_decay learning rate function."""
-        steps_per_epoch = train_ds_size // train_batch_size
-        num_train_steps = steps_per_epoch * num_train_epochs
+        # num_warmup_steps = int(num_train_steps*0.1)
         warmup_fn = optax.linear_schedule(init_value=0.0, end_value=learning_rate, transition_steps=num_warmup_steps)
         decay_fn = optax.linear_schedule(
             init_value=learning_rate, end_value=0, transition_steps=num_train_steps - num_warmup_steps
@@ -621,16 +621,15 @@ def main():
         masks = [_decay_mask_fn(param_node) for param_node in param_nodes]
         return jax.tree_unflatten(treedef, masks)
 
-    num_epochs = int(training_args.num_train_epochs)
-    train_batch_size = int(training_args.per_device_train_batch_size) * jax.device_count()
-    steps_per_epoch = len(train_dataset) // train_batch_size
-    total_train_steps = steps_per_epoch * num_epochs
+    # num_epochs = int(training_args.num_train_epochs)
+    num_train_steps = int(training_args.num_train_steps)
+    train_batch_size = int(training_args.per_device_train_batch_size) * jax.local_device_count()
+    # steps_per_epoch = len(train_dataset) // train_batch_size
+    # total_train_steps = steps_per_epoch * num_epochs
 
     linear_decay_lr_schedule_fn = create_learning_rate_fn(
-        len(train_dataset),
-        train_batch_size,
-        int(training_args.num_train_epochs),
-        int(total_train_steps * 0.1),
+        num_train_steps,
+        training_args.warmup_steps,
         training_args.learning_rate,
     )
 
@@ -676,16 +675,15 @@ def main():
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
-    logger.info(f"  Num Epochs = {num_epochs}")
     logger.info(f"  Instantaneous batch size per device = {training_args.per_device_train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel & distributed) = {train_batch_size}")
-    logger.info(f"  Total optimization steps = {total_train_steps}")
+    logger.info(f"  Total optimization steps = {num_train_steps}")
 
     train_metrics = []
     train_loader = get_dataloader(train_data,train_batch_size)
     validation_loader = get_dataloader(validation_data,train_batch_size)
 
-    for step in tqdm(range(total_train_steps), desc=f"Step ... (1/{total_train_steps})", position=0):
+    for step in tqdm(range(num_train_steps), position=0):
         # ======================== Training ================================
         batch = next(train_loader)
         # batch = {"input_ids":batch['query_input_ids']},{"input_ids":batch['psgs_input_ids']}
