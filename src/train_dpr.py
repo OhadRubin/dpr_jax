@@ -575,8 +575,7 @@ def main():
         partial(tokenize_examples,query_field="question",pos_field="positive_ctxs",neg_field="hard_negative_ctxs"),
         batched=False,
         remove_columns=train_dataset.column_names,
-        desc="Running tokenizer on train dataset",
-        **(dict(num_proc=data_args.dataset_proc_num) if not data_args.streaming else {})
+        **(dict(num_proc=data_args.dataset_proc_num, desc="Running tokenizer on train dataset") if not data_args.streaming else {})
     )
     train_data = train_data.filter(function=lambda data: len(data["psgs_input_ids"]) > data_args.train_n_passages ,
                                    **(dict(num_proc=data_args.dataset_proc_num) if not data_args.streaming else {}))
@@ -585,8 +584,7 @@ def main():
         partial(tokenize_examples,query_field="question",pos_field="positive_ctxs",neg_field="hard_negative_ctxs"),
         batched=False,
         remove_columns=validation_dataset.column_names,
-        desc="Running tokenizer on validation dataset",
-        **(dict(num_proc=data_args.dataset_proc_num) if not data_args.streaming else {}),
+        **(dict(num_proc=data_args.dataset_proc_num, desc="Running tokenizer on validation dataset") if not data_args.streaming else {}),
     )
     validation_data = validation_data.filter(function=lambda data: len(data["psgs_input_ids"]) > data_args.train_n_passages,
                                              **(dict(num_proc=data_args.dataset_proc_num) if not data_args.streaming else {}),
