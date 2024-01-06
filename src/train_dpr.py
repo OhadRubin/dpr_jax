@@ -540,11 +540,12 @@ def main():
     # else:
     num_train_steps = int(training_args.num_train_steps)
     train_batch_size = int(training_args.per_device_train_batch_size) * jax.local_device_count()
-    train_data = get_dataset("codeparrot","train")
     validation_data = get_dataset("codeparrot","validation")
-    # print(next(validation_data))
-    train_loader = get_dataloader(train_data,train_batch_size)
     validation_loader = get_dataloader(validation_data, train_batch_size)        
+    print(next(validation_data))
+    
+    train_data = get_dataset("codeparrot","train")
+    train_loader = get_dataloader(train_data,train_batch_size)
 
     try:
         model = FlaxAutoModel.from_pretrained(
