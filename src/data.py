@@ -213,7 +213,8 @@ def get_dataset(name:str, split:str):
 
     data_stream = run_mapping_pipeline(delayed_dataset, map_functions = [extract_dpr_examples, 
                                                                          inner_create_tokenize_examples("bert-base-uncased", 128, 128)],
-                                       num_workers=50 if split=="train" else 1,
+                                    #    num_workers=50 if split=="train" else 1,
+                                       num_workers=50,
                                        maxsize=[100,100*256,100*256])
     if split=="train":
         data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=5000, seed=42)
