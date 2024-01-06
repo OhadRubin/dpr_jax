@@ -200,7 +200,7 @@ def load_from_seqio(name, split):
     task = seqio.get_mixture_or_task(f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wtokens")
     dataset = task.get_dataset(split=split,
                                 sequence_length=None,
-                                shard_info=seqio.ShardInfo(shard_id,num_shards))
+                                **(dict(shard_info=seqio.ShardInfo(shard_id,num_shards)) if split=="train" else {}))
     yield from dataset.as_numpy_iterator()
     
     
