@@ -195,8 +195,9 @@ def get_dataloader(data, batch_size):
     # dl_iter = repeat(dloader)
     return iter(dloader)
 
-    
-    
+import itertools
+
+
 def get_dataset(dataset,split):
     while True:
 
@@ -204,11 +205,12 @@ def get_dataset(dataset,split):
         
         
 
-        data_stream = run_mapping_pipeline(dataset, map_functions = [extract_dpr_examples, 
+        data_stream = run_mapping_pipeline(itertools.cycle(dataset), map_functions = [extract_dpr_examples, 
                                                                             inner_create_tokenize_examples("bert-base-uncased", 128, 128)],
                                         #    num_workers=50 if split=="train" else 1,
                                         num_workers=50,
-                                        maxsize=[100,100*256,100*256])
+                                        maxsize=[100,100*256,100*256],
+                                        )
         if split=="train":
             data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=5000, seed=42)
             data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=10000, seed=43)
