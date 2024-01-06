@@ -389,7 +389,8 @@ def calc_metrics(scores, labels):
     metrics = dict(recall =rax.recall_metric(scores, labels),
                     ap = rax.ap_metric(scores, labels),
                     ndcg = rax.ndcg_metric(scores, labels),
-                    pre
+                    precision=rax.precision_metric(scores, labels),
+                    accuracy=rax.precision_metric(scores, labels,topn=1),
                         
             )
     return metrics
