@@ -203,7 +203,10 @@ def load_from_seqio(name, split):
     dataset = task.get_dataset(split=split,
                                 sequence_length=None,
                                 **(dict(shard_info=seqio.ShardInfo(shard_id,num_shards)) if split=="train" else {}))
-    yield from dataset.as_numpy_iterator()
+    itr = dataset.as_numpy_iterator()
+    if split!="train":
+        itr = list(tqdm(itr,desc="Loading examples from dev"))
+    yield from itr
     
     
 def get_dataset(name:str, split:str):
