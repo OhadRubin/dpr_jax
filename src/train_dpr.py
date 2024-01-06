@@ -701,6 +701,7 @@ def main():
             
             train_metrics = []
         if step % training_args.eval_steps == 0 and step > 0:
+            eval_metrics = []
             for _ in tqdm(range(training_args.n_eval_steps), desc="Evaluating...", position=2, leave=False):
                 batch = next(validation_loader)
                 metrics, state, dropout_rngs = p_eval_step(state, *batch, dropout_rngs)
@@ -715,7 +716,7 @@ def main():
             )
             if is_main:
                 wandb.log({f"validation/{k}":v for k,v in eval_metrics.items()})
-            eval_metrics = []
+            
                 
 
 
