@@ -65,7 +65,7 @@ import jax.numpy as jnp
 import optax
 from flax import jax_utils, traverse_util
 from flax.jax_utils import prefetch_to_device
-from flax.training.common_utils import get_metrics
+from flax.training.common_utils import stack_forest
 from tqdm import tqdm
 from transformers import AutoConfig, AutoTokenizer, FlaxAutoModel
 from transformers import (
@@ -82,6 +82,21 @@ disable_caching()
 
 ParamTuple = namedtuple("ParamTuple","q_params p_params")
 logger = logging.getLogger(__name__)
+
+def get_metrics(device_metrics):
+  """Helper utility for pmap, gathering replicated timeseries metric data.
+
+  Args:
+   device_metrics: replicated, device-resident pytree of metric data,
+     whose leaves are presumed to be a sequence of arrays recorded over time.
+  Returns:
+   A pytree of unreplicated, host-resident, stacked-over-time arrays useful for
+   computing host-local statistics and logging.
+  """
+  # We select the first element of x in order to get a single copy of a
+  # device-replicated metric.
+  metrics_np = jax.device_get(device_metrics)
+  return stack_forest(metrics_np)
 
 @dataclass
 class DataArguments:
@@ -235,7 +250,7 @@ class TevatronTrainingArguments:
         default=64, metadata={"help": "Batch size per GPU/TPU/MPS/NPU core/CPU for training."}
     )
     logging_steps: float = field(
-        default=100,
+        default=10,
         metadata={
             "help": (
                 "Log every X updates steps. Should be an integer"
@@ -251,7 +266,7 @@ class TevatronTrainingArguments:
         },
     )
     n_eval_steps: float = field(
-        default=10,
+        default=100,
         metadata={
             "help": (
                 "Eval every X updates steps. Should be an integer."
