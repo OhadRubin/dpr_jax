@@ -3,7 +3,7 @@ import datasets
 import numpy as np
 import seqio
 import jax
-from transformer import tasks
+
 from tqdm import tqdm
 from multiprocessing import Pool
 from functools import partial
@@ -194,30 +194,17 @@ def get_dataloader(data, batch_size):
     dloader.peek()
     # dl_iter = repeat(dloader)
     return iter(dloader)
-from tqdm import tqdm
-def load_from_seqio(name, split):
-    shard_id = jax.process_index()
-    num_shards=jax.process_count()
-    
-    task = seqio.get_mixture_or_task(f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wtokens")
-    dataset = task.get_dataset(split=split,
-                                sequence_length=None,
-                                shard_info=seqio.ShardInfo(shard_id,num_shards),
-                                # **(dict(shard_info=seqio.ShardInfo(shard_id,num_shards)) if split=="train" else {}),
-                                )
-    itr = dataset.as_numpy_iterator()
-    if split!="train":
-        itr = list(tqdm(itr,desc="Loading examples from dev"))
-    yield from itr
+
     
     
-def get_dataset(name:str, split:str):
+def get_dataset(dataset,split):
     while True:
-        delayed_dataset =  delayed(partial(load_from_seqio, name=name,split=split))()
+
+        # delayed_dataset =  delayed(partial(load_from_seqio, name=name,split=split))()
         
         
 
-        data_stream = run_mapping_pipeline(delayed_dataset, map_functions = [extract_dpr_examples, 
+        data_stream = run_mapping_pipeline(dataset, map_functions = [extract_dpr_examples, 
                                                                             inner_create_tokenize_examples("bert-base-uncased", 128, 128)],
                                         #    num_workers=50 if split=="train" else 1,
                                         num_workers=50,

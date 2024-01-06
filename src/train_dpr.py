@@ -25,7 +25,8 @@ if "DEBUG" in os.environ:
 import jax
 print(jax.devices())
 
-
+import seqio
+from transformer import tasks
 from functools import partial
 
 import jax
@@ -447,8 +448,28 @@ def grad_cache_train_step(state, queries, passages, dropout_rng, axis='device', 
 import numpy as np
 
 
+from more_itertools import peekable
+from tqdm import tqdm
 
-
+def load_from_seqio(name, split):    
+    ds_name = f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wtokens"
+    task = seqio.get_mixture_or_task(ds_name)
+    if split=="train":
+        dataset = task.get_dataset(split=split,
+                                    sequence_length=None,
+                                    shard_info=seqio.ShardInfo(jax.process_index(),jax.process_count()),
+                                    )
+    else:
+        dataset = task.get_dataset(split=split,
+                                    sequence_length=None,
+                                    )
+    itr = dataset.as_numpy_iterator()
+    itr = peekable(itr)
+    itr.peek()
+    if split!="train":
+        itr = list(tqdm(itr,desc="Loading examples from dev"))
+    for x in itr:
+        yield x
 
 
 
@@ -459,9 +480,7 @@ import time
 import wandb
 def main():
     print("before is_main")
-    is_main = jax.process_index() == 0
-    if is_main:
-        wandb.init(project="dpr_jax", resume="allow")
+
     
     parser = HfArgumentParser((ModelArguments, DataArguments, TevatronTrainingArguments))
 
@@ -540,11 +559,12 @@ def main():
     # else:
     num_train_steps = int(training_args.num_train_steps)
     train_batch_size = int(training_args.per_device_train_batch_size) * jax.local_device_count()
-    validation_data = get_dataset("codeparrot","validation")
+    validation_dataset = peekable(load_from_seqio( name="codeparrot",split="validation"))
+    validation_dataset.peek()
+    validation_data = get_dataset(validation_dataset,"validation")
     validation_loader = get_dataloader(validation_data, train_batch_size)        
-    print(next(validation_loader))
-    
-    train_data = get_dataset("codeparrot","train")
+    train_dataset = load_from_seqio(name="codeparrot",split="train")
+    train_data = get_dataset(train_dataset,"train")
     train_loader = get_dataloader(train_data,train_batch_size)
 
     try:
@@ -641,7 +661,9 @@ def main():
     logger.info(f"  Total optimization steps = {num_train_steps}")
 
     train_metrics = []
-    
+    is_main = jax.process_index() == 0
+    if is_main:
+        wandb.init(project="dpr_jax", resume="allow")
 
     for step in tqdm(range(num_train_steps), position=0):
         # ======================== Training ================================

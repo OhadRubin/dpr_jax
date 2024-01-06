@@ -21,7 +21,7 @@ def apply_delayed(obj):
 
 def data_reader(delayed_source, output_queue, done_output_cnt):
     # Read data in chunks
-    for data_chunk in apply_delayed(delayed_source):
+    for data_chunk in delayed_source:
         output_queue.put(data_chunk)
     done_output_cnt[0].value += 1
 
