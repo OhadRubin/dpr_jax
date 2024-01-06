@@ -542,7 +542,7 @@ def main():
     train_batch_size = int(training_args.per_device_train_batch_size) * jax.local_device_count()
     validation_data = get_dataset("codeparrot","validation")
     validation_loader = get_dataloader(validation_data, train_batch_size)        
-    print(next(validation_data))
+    print(next(validation_loader))
     
     train_data = get_dataset("codeparrot","train")
     train_loader = get_dataloader(train_data,train_batch_size)
