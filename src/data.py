@@ -98,7 +98,25 @@ def extract_dpr_examples(element):
 #         # Wait for all workers to finish
 #         book_worker.join()
 #         flatten_worker.join()
+
         
+
+import jax
+from functools import partial
+from src.proc_utils import run_mapping_pipeline,delayed
+# tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
+def load_from_seqio(name, split):
+    shard_id = jax.process_index()
+    num_shards=jax.process_count()
+    
+    task = seqio.get_mixture_or_task(f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wtokens")
+    dataset = task.get_dataset(split=split,
+                                sequence_length=None,
+                                shard_info=seqio.ShardInfo(shard_id,num_shards))
+    yield from dataset.as_numpy_iterator()
+def test_stuff():
+    delayed_dataset =  delayed(partial(load_from_seqio, name="codeparrot",split="train"))()
+    
 def get_dataset(name:str, split:str):
     shard_id = jax.process_index()
     num_shards=jax.process_count()
@@ -125,4 +143,4 @@ def get_dataset(name:str, split:str):
 import fire
 
 if __name__ == "__main__":
-    fire.Fire(get_dataset)
+    fire.Fire()
