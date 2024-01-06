@@ -194,7 +194,7 @@ def get_dataloader(data, batch_size):
     dloader.peek()
     # dl_iter = repeat(dloader)
     return iter(dloader)
-
+from tqdm import tqdm
 def load_from_seqio(name, split):
     shard_id = jax.process_index()
     num_shards=jax.process_count()
@@ -211,7 +211,7 @@ def load_from_seqio(name, split):
     
 def get_dataset(name:str, split:str):
     delayed_dataset =  delayed(partial(load_from_seqio, name=name,split=split))()
-    from tqdm import tqdm
+    
     
 
     data_stream = run_mapping_pipeline(delayed_dataset, map_functions = [extract_dpr_examples, 
