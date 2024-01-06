@@ -64,8 +64,7 @@ import jax.numpy as jnp
 import optax
 from flax import jax_utils, traverse_util
 from flax.jax_utils import prefetch_to_device
-from flax.training.common_utils import get_metrics, shard
-from torch.utils.data import DataLoader, IterableDataset
+from flax.training.common_utils import get_metrics
 from tqdm import tqdm
 from transformers import AutoConfig, AutoTokenizer, FlaxAutoModel
 from transformers import (
@@ -75,8 +74,7 @@ from transformers import (
 import os
 from dataclasses import dataclass, field
 from typing import Optional, List
-# from src.data import get_dataset
-from flax.training.common_utils import get_metrics, shard
+from src.data import get_dataset, get_dataloader
 from collections import namedtuple
 from datasets import disable_caching
 disable_caching()
@@ -444,83 +442,12 @@ def grad_cache_train_step(state, queries, passages, dropout_rng, axis='device', 
     return loss, new_state, new_rng
 
 
-import random
-def format_example(x, n_passages, top_elements):
-    neg_psgs_input_ids = x["neg_psgs_input_ids"]
-    neg_psgs_attention_mask = x["neg_psgs_attention_mask"]
-    if len(neg_psgs_input_ids)<(n_passages-1):
-        return None
-    neg_cand_idxs = list(range(len(neg_psgs_input_ids)))
-    random.shuffle(neg_cand_idxs)
-    neg_idx = neg_cand_idxs[:n_passages-1]
-    neg_psgs_input_ids = [neg_psgs_input_ids[i] for i in neg_idx]
-    neg_psgs_attention_mask = [neg_psgs_attention_mask[i] for i in neg_idx]
-    pos_psgs_input_ids = x["pos_psgs_input_ids"][:top_elements]
-    pos_psgs_attention_mask = x["pos_psgs_attention_mask"][:top_elements]
-    pos_cand_idxs = list(range(len(pos_psgs_input_ids)))
-    random.shuffle(pos_cand_idxs)
-    pos_idx = pos_cand_idxs[0]
-    pos_psgs_input_ids = pos_psgs_input_ids[pos_idx]
-    pos_psgs_attention_mask = pos_psgs_attention_mask[pos_idx]
-    psgs_input_ids = np.array([pos_psgs_input_ids] + neg_psgs_input_ids)
-    psgs_attention_mask = np.array([pos_psgs_attention_mask] + neg_psgs_attention_mask)
-    
-    el = dict(query_input_ids=x["query_input_ids"],query_attention_mask=x["query_attention_mask"],
-                psgs_input_ids=psgs_input_ids,psgs_attention_mask=psgs_attention_mask)
-    return el
+
+
 import numpy as np
-class IterableDatasetWrapper(IterableDataset):
-    def __init__(self, dataset, streaming,n_passages,top_elements=None):
-        super(IterableDatasetWrapper).__init__()
-        self.dataset = dataset
-        self.streaming = streaming
-        self.n_passages = n_passages
-        self.top_elements = top_elements
-    def __iter__(self):
-        cnt = 1
-        while True:
-            dataset = []
-            for x in self.dataset:
-                dataset.append(x)
-                el = format_example(x,self.n_passages,self.top_elements)
-                if el is None:
-                    continue
-                
-                yield el
-            np.random.shuffle(dataset)
-            self.dataset = dataset 
-            # self.dataset = self.dataset.shuffle(seed=42+cnt,
-            #                                     # **(dict(buffer_size=1000) if self.streaming else {})
-            #                                     )
-            cnt += 1
 
-def package(result):
-    keys = list(result[0].keys())
-    batch = {}
-    for key in keys:
-        try:
-            arr = np.array([res[key] for res in result]).squeeze(-2)
-            arr = shard(arr)
-            if key in ["psgs_input_ids","psgs_attention_mask"]:
-                arr = rearrange(arr,'b p n ... -> b (p n) ...')
-            batch[key] = arr
-        except ValueError:
-            print([np.array(res[key]).shape for res in result])
-            raise
-    query = {"input_ids":batch['query_input_ids'],"attention_mask":batch['query_attention_mask']}
-    psgs = {"input_ids":batch['psgs_input_ids'],"attention_mask":batch['psgs_attention_mask']}
-    return query,psgs
 
-def get_dataloader(data, batch_size, streaming, n_passages):
-    
-    iterable = IterableDatasetWrapper(data, streaming, n_passages) 
-    dloader= DataLoader(iterable,
-                            batch_size=batch_size,
-                            collate_fn=lambda v: package(v),
-                            num_workers=16,
-                            prefetch_factor=256,
-                            )
-    return iter(dloader)
+
 from datasets import IterableDataset
 
 
@@ -611,33 +538,8 @@ def main():
                                                         # **(dict(buffer_size=1000) if data_args.streaming else {})
                                                         )
     else:
-        shard_id = jax.process_index()
-        num_shards = jax.process_count()
-        train_dataset = datasets.load_from_disk(f"gs://meliad2_us2/datasets/dpr_datasets/codeparrot_one_tenth/train/hfformat_{shard_id}-{num_shards}",)
-        validation_dataset = datasets.load_from_disk(f"gs://meliad2_us2/datasets/dpr_datasets/codeparrot_one_tenth/validation/hfformat_{shard_id}-{num_shards}")
-        print(train_dataset)
-        print(validation_dataset)
-
-    
-    
-    train_data = train_dataset.map(
-        tokenize_examples,
-        batched=False,
-        remove_columns=train_dataset.column_names,
-        **(dict(num_proc=data_args.dataset_proc_num, desc="Running tokenizer on train dataset") if not data_args.streaming else {})
-    )
-    # train_data = train_data.filter(function=lambda data: len(data["psgs_input_ids"]) > data_args.train_n_passages ,
-    #                                **(dict(num_proc=data_args.dataset_proc_num) if not data_args.streaming else {}))
-    
-    validation_data = validation_dataset.map(
-        partial(tokenize_examples,query_field="question",pos_field="positive_ctxs",neg_field="hard_negative_ctxs"),
-        batched=False,
-        remove_columns=validation_dataset.column_names,
-        **(dict(num_proc=data_args.dataset_proc_num, desc="Running tokenizer on validation dataset") if not data_args.streaming else {}),
-    )
-    # validation_data = validation_data.filter(function=lambda data: len(data["psgs_input_ids"]) > data_args.train_n_passages,
-    #                                          **(dict(num_proc=data_args.dataset_proc_num) if not data_args.streaming else {}),
-    #                                          )
+        train_data = get_dataset("codeparrot","train")
+        validation_data = get_dataset("codeparrot","validation")
 
     try:
         model = FlaxAutoModel.from_pretrained(
@@ -734,8 +636,8 @@ def main():
     logger.info(f"  Total optimization steps = {num_train_steps}")
 
     train_metrics = []
-    train_loader = get_dataloader(train_data,train_batch_size,data_args.streaming,data_args.train_n_passages)
-    validation_loader = get_dataloader(validation_data,train_batch_size,data_args.streaming,data_args.train_n_passages)
+    train_loader = get_dataloader(train_data)
+    validation_loader = get_dataloader(validation_data)
 
     for step in tqdm(range(num_train_steps), position=0):
         # ======================== Training ================================

@@ -127,6 +127,69 @@ def shuffled_streaming_iterator(iterable, chunk_size=10, seed=None):
             yield item
 
 
+import random
+
+import numpy as np
+class IterableDatasetWrapper(IterableDataset):
+    def __init__(self, dataset):
+        super(IterableDatasetWrapper).__init__()
+        self.dataset = dataset
+    def __iter__(self):
+        yield from self.dataset
+from einops import rearrange
+from flax.training.common_utils import shard
+def package(result):
+    keys = list(result[0].keys())
+    batch = {}
+    for key in keys:
+        try:
+            arr = np.array([res[key] for res in result]).squeeze(-2)
+            arr = shard(arr)
+            if key in ["psgs_input_ids","psgs_attention_mask"]:
+                arr = rearrange(arr,'b p n ... -> b (p n) ...')
+            batch[key] = arr
+        except ValueError:
+            print([np.array(res[key]).shape for res in result])
+            raise
+    query = {"input_ids":batch['query_input_ids'],"attention_mask":batch['query_attention_mask']}
+    psgs = {"input_ids":batch['psgs_input_ids'],"attention_mask":batch['psgs_attention_mask']}
+    return query,psgs
+
+from torch.utils.data import DataLoader, IterableDataset
+
+def format_example(x, n_passages=2, top_elements=1):
+    neg_psgs_input_ids = x["neg_psgs_input_ids"]
+    neg_psgs_attention_mask = x["neg_psgs_attention_mask"]
+    if len(neg_psgs_input_ids)<(n_passages-1):
+        return None
+    neg_cand_idxs = list(range(len(neg_psgs_input_ids)))
+    random.shuffle(neg_cand_idxs)
+    neg_idx = neg_cand_idxs[:n_passages-1]
+    neg_psgs_input_ids = [neg_psgs_input_ids[i] for i in neg_idx]
+    neg_psgs_attention_mask = [neg_psgs_attention_mask[i] for i in neg_idx]
+    pos_psgs_input_ids = x["pos_psgs_input_ids"][:top_elements]
+    pos_psgs_attention_mask = x["pos_psgs_attention_mask"][:top_elements]
+    pos_cand_idxs = list(range(len(pos_psgs_input_ids)))
+    random.shuffle(pos_cand_idxs)
+    pos_idx = pos_cand_idxs[0]
+    pos_psgs_input_ids = pos_psgs_input_ids[pos_idx]
+    pos_psgs_attention_mask = pos_psgs_attention_mask[pos_idx]
+    psgs_input_ids = np.array([pos_psgs_input_ids] + neg_psgs_input_ids)
+    psgs_attention_mask = np.array([pos_psgs_attention_mask] + neg_psgs_attention_mask)
+    
+    el = dict(query_input_ids=x["query_input_ids"],query_attention_mask=x["query_attention_mask"],
+                psgs_input_ids=psgs_input_ids,psgs_attention_mask=psgs_attention_mask)
+    return el
+
+def get_dataloader(data, batch_size):
+    
+    iterable = IterableDatasetWrapper(data) 
+    dloader= DataLoader(iterable,
+                            batch_size=batch_size,
+                            collate_fn=lambda v: package(v)
+                            )
+    return iter(dloader)
+
 def load_from_seqio(name, split):
     shard_id = jax.process_index()
     num_shards=jax.process_count()
@@ -138,15 +201,16 @@ def load_from_seqio(name, split):
     yield from dataset.as_numpy_iterator()
     
     
-def test_stuff():
-    delayed_dataset =  delayed(partial(load_from_seqio, name="codeparrot",split="train"))()
+def get_dataset(name:str, split:str):
+    delayed_dataset =  delayed(partial(load_from_seqio, name=name,split=split))()
     from tqdm import tqdm
     
 
     data_stream = run_mapping_pipeline(delayed_dataset, map_functions = [extract_dpr_examples, 
                                                                          inner_create_tokenize_examples("bert-base-uncased", 128, 128)],
                                        num_workers=50)
-    data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=20000, seed=42)
+    data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=5000, seed=42)
+    data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=10000, seed=43)
     tokenizer = AutoTokenizer.from_pretrained(
         "bert-base-uncased",
     )
@@ -155,29 +219,31 @@ def test_stuff():
             print(tokenizer.decode(x["query_input_ids"].squeeze() ))
             print(tokenizer.decode(x["pos_psgs_input_ids"].squeeze() ))
             print(tokenizer.decode(x["neg_psgs_input_ids"].squeeze() ))
+        yield format_example(x)
+        
 
     
-def get_dataset(name:str, split:str):
-    shard_id = jax.process_index()
-    num_shards=jax.process_count()
-    tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
-    task = seqio.get_mixture_or_task(f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wtokens")
-    train_set = task.get_dataset(split=split,
-                                sequence_length=None,
-                                shard_info=seqio.ShardInfo(shard_id,num_shards))
-    if split=="train":
-        train_set = train_set.shard(15,0)
-    examples = list(tqdm(train_set.as_numpy_iterator(),desc="Loading examples"))
-    extract_dpr_examples_w_tok =  partial(extract_dpr_examples, tokenizer=tokenizer)
-    with Pool(300) as p:
-        examples = list(tqdm(p.imap(extract_dpr_examples_w_tok, examples), total=len(examples), desc="Extracting examples"))
+# def get_dataset(name:str, split:str):
+#     shard_id = jax.process_index()
+#     num_shards=jax.process_count()
+#     tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
+#     task = seqio.get_mixture_or_task(f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wtokens")
+#     train_set = task.get_dataset(split=split,
+#                                 sequence_length=None,
+#                                 shard_info=seqio.ShardInfo(shard_id,num_shards))
+#     if split=="train":
+#         train_set = train_set.shard(15,0)
+#     examples = list(tqdm(train_set.as_numpy_iterator(),desc="Loading examples"))
+#     extract_dpr_examples_w_tok =  partial(extract_dpr_examples, tokenizer=tokenizer)
+#     with Pool(300) as p:
+#         examples = list(tqdm(p.imap(extract_dpr_examples_w_tok, examples), total=len(examples), desc="Extracting examples"))
     
-    gen = sum(tqdm(examples,desc="Summing examples"), [])
-    dataset = datasets.Dataset.from_list(gen)
-    dataset = dataset.shuffle(seed=42)
-    dataset.save_to_disk(f"gs://meliad2_us2/datasets/dpr_datasets/{name}_one_tenth/{split}/hfformat_{shard_id}-{num_shards}")
+#     gen = sum(tqdm(examples,desc="Summing examples"), [])
+#     dataset = datasets.Dataset.from_list(gen)
+#     dataset = dataset.shuffle(seed=42)
+#     dataset.save_to_disk(f"gs://meliad2_us2/datasets/dpr_datasets/{name}_one_tenth/{split}/hfformat_{shard_id}-{num_shards}")
     
-    # return dataset
+#     # return dataset
 
 
 import fire
