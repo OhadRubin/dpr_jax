@@ -401,10 +401,10 @@ class RetrieverTrainState(TrainState):
     params: Union[TiedParams, DualParams]
 import rax
 def calc_metrics(scores, labels):
-    metrics = dict(recall =rax.recall_metric(scores, labels),
+    metrics = dict(recall_at_5 =rax.recall_metric(scores, labels,topn=5),
                     ap = rax.ap_metric(scores, labels),
                     ndcg = rax.ndcg_metric(scores, labels),
-                    precision=rax.precision_metric(scores, labels),
+                    precision_at_5=rax.precision_metric(scores, labels,topn=5),
                     accuracy=rax.precision_metric(scores, labels,topn=1),
                         
             )
