@@ -64,7 +64,6 @@ def tokenize_examples(example,
                     neg_field="hard_negative_ctxs",
                     detokenizer=None,
                     ):
-    print(example)
     tokenize = partial(tokenizer,
                         return_attention_mask=True,
                         return_token_type_ids=False,
