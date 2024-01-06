@@ -715,7 +715,7 @@ def main():
                 flush=True,
             )
             if is_main:
-                wandb.log({f"validation/{k}":v for k,v in train_metrics.items()})
+                wandb.log({f"validation/{k}":v for k,v in eval_metrics.items()})
                 
 
 
