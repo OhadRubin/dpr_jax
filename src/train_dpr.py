@@ -669,7 +669,7 @@ def main():
         # ======================== Training ================================
         batch = next(train_loader)
         metrics, state, dropout_rngs = p_train_step(state, *batch, dropout_rngs)
-        train_metrics.append(**metrics)
+        train_metrics.append(jax.tree_map(lambda x:x.mean(),metrics))
 
         if step % training_args.logging_steps == 0 and step > 0:
             train_metrics = get_metrics(train_metrics)
@@ -690,7 +690,7 @@ def main():
             for _ in tqdm(range(training_args.n_eval_steps), desc="Evaluating...", position=2, leave=False):
                 batch = next(validation_loader)
                 metrics, state, dropout_rngs = p_eval_step(state, *batch, dropout_rngs)
-                eval_metrics.append(**metrics)
+                eval_metrics.append(jax.tree_map(lambda x:x.mean(),metrics))
             eval_metrics = get_metrics(eval_metrics)
             eval_metrics = jax.tree_map(lambda x:x.mean(),eval_metrics)
             loss = eval_metrics['loss'].mean()
