@@ -182,6 +182,7 @@ def format_example(x, n_passages=2, top_elements=1):
     return el
 
 from more_itertools import peekable
+# from itertools import 
 def get_dataloader(data, batch_size):
     
     iterable = IterableDatasetWrapper(data) 
@@ -191,6 +192,7 @@ def get_dataloader(data, batch_size):
                             )
     dloader = peekable(dloader)
     dloader.peek()
+    # dl_iter = repeat(dloader)
     return iter(dloader)
 
 def load_from_seqio(name, split):
@@ -211,7 +213,7 @@ def get_dataset(name:str, split:str):
 
     data_stream = run_mapping_pipeline(delayed_dataset, map_functions = [extract_dpr_examples, 
                                                                          inner_create_tokenize_examples("bert-base-uncased", 128, 128)],
-                                       num_workers=50 if split=="train" else 10,
+                                       num_workers=50 if split=="train" else 1,
                                        maxsize=[100,100*256,100*256])
     if split=="train":
         data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=5000, seed=42)
