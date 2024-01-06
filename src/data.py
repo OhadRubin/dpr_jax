@@ -199,7 +199,7 @@ def load_from_seqio(name, split):
     shard_id = jax.process_index()
     num_shards=jax.process_count()
     
-    task = seqio.get_mixture_or_task(f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wloss")
+    task = seqio.get_mixture_or_task(f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wtokens")
     dataset = task.get_dataset(split=split,
                                 sequence_length=None,
                                 shard_info=seqio.ShardInfo(shard_id,num_shards),
@@ -212,27 +212,28 @@ def load_from_seqio(name, split):
     
     
 def get_dataset(name:str, split:str):
-    delayed_dataset =  delayed(partial(load_from_seqio, name=name,split=split))()
-    
-    
+    while True:
+        delayed_dataset =  delayed(partial(load_from_seqio, name=name,split=split))()
+        
+        
 
-    data_stream = run_mapping_pipeline(delayed_dataset, map_functions = [extract_dpr_examples, 
-                                                                         inner_create_tokenize_examples("bert-base-uncased", 128, 128)],
-                                    #    num_workers=50 if split=="train" else 1,
-                                       num_workers=50,
-                                       maxsize=[100,100*256,100*256])
-    if split=="train":
-        data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=5000, seed=42)
-        data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=10000, seed=43)
-    tokenizer = AutoTokenizer.from_pretrained(
-        "bert-base-uncased",
-    )
-    for i,x in enumerate(tqdm(data_stream)):
-        if (i%10000)==0:
-            print(tokenizer.decode(x["query_input_ids"].squeeze() ))
-            print(tokenizer.decode(x["pos_psgs_input_ids"].squeeze() ))
-            print(tokenizer.decode(x["neg_psgs_input_ids"].squeeze() ))
-        yield format_example(x)
+        data_stream = run_mapping_pipeline(delayed_dataset, map_functions = [extract_dpr_examples, 
+                                                                            inner_create_tokenize_examples("bert-base-uncased", 128, 128)],
+                                        #    num_workers=50 if split=="train" else 1,
+                                        num_workers=50,
+                                        maxsize=[100,100*256,100*256])
+        if split=="train":
+            data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=5000, seed=42)
+            data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=10000, seed=43)
+        tokenizer = AutoTokenizer.from_pretrained(
+            "bert-base-uncased",
+        )
+        for i,x in enumerate(tqdm(data_stream)):
+            if (i%10000)==0:
+                print(tokenizer.decode(x["query_input_ids"].squeeze() ))
+                print(tokenizer.decode(x["pos_psgs_input_ids"].squeeze() ))
+                print(tokenizer.decode(x["neg_psgs_input_ids"].squeeze() ))
+            yield format_example(x)
         
 
     
