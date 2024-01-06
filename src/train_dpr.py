@@ -235,7 +235,7 @@ class TevatronTrainingArguments:
         default=64, metadata={"help": "Batch size per GPU/TPU/MPS/NPU core/CPU for training."}
     )
     logging_steps: float = field(
-        default=10,
+        default=100,
         metadata={
             "help": (
                 "Log every X updates steps. Should be an integer"
@@ -243,7 +243,7 @@ class TevatronTrainingArguments:
         },
     )
     eval_steps: float = field(
-        default=100,
+        default=1000,
         metadata={
             "help": (
                 "Eval every X updates steps. Should be an integer."
@@ -333,16 +333,18 @@ def _onehot(labels: chex.Array, num_classes: int) -> chex.Array:
     x = lax.select(x, jnp.ones(x.shape), jnp.zeros(x.shape))
     return x.astype(jnp.float32)
 
-
-def p_contrastive_loss(ss: chex.Array, tt: chex.Array, axis: str = 'device') -> chex.Array:
+def p_calc_scores(ss: chex.Array, tt: chex.Array, axis: str = 'device') -> chex.Array:
     per_shard_targets = tt.shape[0]
     per_sample_targets = int(tt.shape[0] / ss.shape[0])
     labels = jnp.arange(0, per_shard_targets, per_sample_targets) + per_shard_targets * lax.axis_index(axis)
 
     tt = lax.all_gather(tt, axis).reshape((-1, ss.shape[-1]))
     scores = jnp.dot(ss, jnp.transpose(tt))
+    return scores, _onehot(labels, scores.shape[-1])
 
-    return optax.softmax_cross_entropy(scores, _onehot(labels, scores.shape[-1]))
+def p_contrastive_loss(ss: chex.Array, tt: chex.Array, axis: str = 'device') -> chex.Array:
+    scores, labels = p_calc_scores(ss, tt, axis)
+    return optax.softmax_cross_entropy(scores, labels)
 
 class TiedParams(PyTreeNode):
     params: FrozenDict[str, Any]
@@ -382,7 +384,15 @@ class DualParams(PyTreeNode):
 
 class RetrieverTrainState(TrainState):
     params: Union[TiedParams, DualParams]
-
+import rax
+def calc_metrics(scores, labels):
+    metrics = dict(recall =rax.recall_metric(scores, labels),
+                    ap = rax.ap_metric(scores, labels),
+                    ndcg = rax.ndcg_metric(scores, labels),
+                    pre
+                        
+            )
+    return metrics
 
 def retriever_train_step(state, queries, passages, dropout_rng, axis='device'):
     q_dropout_rng, p_dropout_rng, new_dropout_rng = jax.random.split(dropout_rng, 3)
@@ -390,14 +400,20 @@ def retriever_train_step(state, queries, passages, dropout_rng, axis='device'):
     def compute_loss(params):
         q_reps = state.apply_fn(**queries, params=params.q_params, dropout_rng=q_dropout_rng, train=True)[0][:, 0, :]
         p_reps = state.apply_fn(**passages, params=params.p_params, dropout_rng=p_dropout_rng, train=True)[0][:, 0, :]
-        return jnp.mean(p_contrastive_loss(q_reps, p_reps, axis=axis))
+        scores, labels = p_calc_scores(q_reps, p_reps, axis=axis)
+        loss = jnp.mean(optax.softmax_cross_entropy(scores, labels))
+        metrics = calc_metrics(scores, labels)
+        metrics = jax.tree_map(lambda x: jnp.mean(x), metrics)
+        metrics["loss"] = loss
+        return loss, metrics
 
-    loss, grad = jax.value_and_grad(compute_loss)(state.params)
-    loss, grad = jax.lax.pmean([loss, grad], axis)
+    (loss,metrics), grad = jax.value_and_grad(compute_loss, has_aux=True)(state.params)
+    loss, grad, metrics = jax.lax.pmean([loss, grad, metrics], axis)
 
     new_state = state.apply_gradients(grads=grad)
 
-    return loss, new_state, new_dropout_rng
+    return metrics, new_state, new_dropout_rng
+
 
 def retriever_eval_step(state, queries, passages, dropout_rng, axis='device'):
     q_dropout_rng, p_dropout_rng, new_dropout_rng = jax.random.split(dropout_rng, 3)
@@ -405,11 +421,16 @@ def retriever_eval_step(state, queries, passages, dropout_rng, axis='device'):
     def compute_loss(params):
         q_reps = state.apply_fn(**queries, params=params.q_params, dropout_rng=q_dropout_rng, train=True)[0][:, 0, :]
         p_reps = state.apply_fn(**passages, params=params.p_params, dropout_rng=p_dropout_rng, train=True)[0][:, 0, :]
-        return jnp.mean(p_contrastive_loss(q_reps, p_reps, axis=axis))
+        scores, labels = p_calc_scores(q_reps, p_reps, axis=axis)
+        loss = jnp.mean(optax.softmax_cross_entropy(scores, labels))
+        metrics = calc_metrics(scores, labels)
+        metrics = jax.tree_map(lambda x: jnp.mean(x), metrics)
+        metrics["loss"] = loss
+        return loss, metrics
 
-    loss = compute_loss(state.params)
-    loss = jax.lax.pmean(loss, axis)
-    return loss, state, new_dropout_rng
+    _,metrics = compute_loss(state.params)
+    metrics = jax.lax.pmean(metrics, axis)
+    return metrics, state, new_dropout_rng
 from einops import rearrange
 
 def grad_cache_train_step(state, queries, passages, dropout_rng, axis='device', q_n_subbatch=1, p_n_subbatch=1):
@@ -540,23 +561,6 @@ def main():
         }
     else:
         data_files = None
-    # if False:
-    #     dataset = datasets.load_dataset(data_args.dataset_name, data_args.config_name,
-    #                               cache_dir=model_args.cache_dir,
-    #                               streaming=data_args.streaming,
-    #                             data_files=data_files)
-    #     train_dataset = dataset["train"]
-    #     train_dataset = split_dataset_by_node(train_dataset, jax.process_index(), 12)
-    #     train_dataset = train_dataset.shuffle(seed=42, 
-    #                                         #   **(dict(buffer_size=1000) if data_args.streaming else {})
-    #                                           )
-        
-    #     validation_dataset = dataset["validation"]
-    #     validation_dataset = split_dataset_by_node(validation_dataset, jax.process_index(), 12)
-    #     validation_dataset = validation_dataset.shuffle(seed=42,
-    #                                                     # **(dict(buffer_size=1000) if data_args.streaming else {})
-    #                                                     )
-    # else:
     num_train_steps = int(training_args.num_train_steps)
     train_batch_size = int(training_args.per_device_train_batch_size) * jax.local_device_count()
     validation_dataset = peekable(load_from_seqio( name="codeparrot",split="validation"))
@@ -603,10 +607,6 @@ def main():
         masks = [_decay_mask_fn(param_node) for param_node in param_nodes]
         return jax.tree_unflatten(treedef, masks)
 
-    # num_epochs = int(training_args.num_train_epochs)
-    
-    # steps_per_epoch = len(train_dataset) // train_batch_size
-    # total_train_steps = steps_per_epoch * num_epochs
 
     linear_decay_lr_schedule_fn = create_learning_rate_fn(
         num_train_steps,
@@ -655,7 +655,6 @@ def main():
 
 
     logger.info("***** Running training *****")
-    # logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Instantaneous batch size per device = {training_args.per_device_train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel & distributed) = {train_batch_size}")
     logger.info(f"  Total optimization steps = {num_train_steps}")
@@ -668,12 +667,13 @@ def main():
     for step in tqdm(range(num_train_steps), position=0):
         # ======================== Training ================================
         batch = next(train_loader)
-        loss, state, dropout_rngs = p_train_step(state, *batch, dropout_rngs)
-        train_metrics.append({'loss': loss})
+        metrics, state, dropout_rngs = p_train_step(state, *batch, dropout_rngs)
+        train_metrics.append(**metrics)
 
         if step % training_args.logging_steps == 0 and step > 0:
             train_metrics = get_metrics(train_metrics)
-            loss = train_metrics['loss'].mean()
+            train_metrics = jax.tree_map(lambda x:x.mean(),train_metrics)
+            loss = train_metrics['loss']
             lr = linear_decay_lr_schedule_fn(step)
             print(
                 f"Step... ({step} | Loss: {loss},"
@@ -681,16 +681,17 @@ def main():
                 flush=True,
             )
             if is_main:
-                wandb.log({"train/loss":loss,"lr":lr})
+                wandb.log({"lr":lr, **{f"train/{k}":v for k,v in train_metrics.items()}})
             
             train_metrics = []
         if step % training_args.eval_steps == 0 and step > 0:
             eval_metrics = []
             for _ in tqdm(range(training_args.n_eval_steps), desc="Evaluating...", position=2, leave=False):
                 batch = next(validation_loader)
-                loss, state, dropout_rngs = p_eval_step(state, *batch, dropout_rngs)
-                eval_metrics.append({'loss': loss})
+                metrics, state, dropout_rngs = p_eval_step(state, *batch, dropout_rngs)
+                eval_metrics.append(**metrics)
             eval_metrics = get_metrics(eval_metrics)
+            eval_metrics = jax.tree_map(lambda x:x.mean(),eval_metrics)
             loss = eval_metrics['loss'].mean()
             
             print(
@@ -698,7 +699,7 @@ def main():
                 flush=True,
             )
             if is_main:
-                wandb.log({"validation/loss":loss})
+                wandb.log({f"validation/{k}":v for k,v in train_metrics.items()})
                 
 
 

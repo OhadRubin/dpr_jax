@@ -19,7 +19,7 @@ def extract_dpr_examples(element):
             examples_dict[chunk_id] = {"question":chunks[chunk_id], "positive_ctxs":[], "hard_negative_ctxs":[]}
         if candidate_rank==0:
             examples_dict[chunk_id]["positive_ctxs"].append({"text":chunks[candidate_idx]})
-        if candidate_rank==19:
+        if candidate_rank==5:
             examples_dict[chunk_id]["hard_negative_ctxs"].append({"text":chunks[candidate_idx]})
     final_list = []
     for value in examples_dict.values():
@@ -182,7 +182,7 @@ def format_example(x, n_passages=2, top_elements=1):
     return el
 
 from more_itertools import peekable
-# from itertools import 
+
 def get_dataloader(data, batch_size):
     
     iterable = IterableDatasetWrapper(data) 
@@ -200,53 +200,24 @@ import itertools
 
 def get_dataset(dataset,split):
     while True:
-
-        # delayed_dataset =  delayed(partial(load_from_seqio, name=name,split=split))()
-        
-        
-
         data_stream = run_mapping_pipeline(itertools.cycle(dataset), map_functions = [extract_dpr_examples, 
                                                                             inner_create_tokenize_examples("bert-base-uncased", 128, 128)],
-                                        #    num_workers=50 if split=="train" else 1,
                                         num_workers=50,
                                         maxsize=[100,100*256,100*256],
                                         )
         if split=="train":
-            data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=5000, seed=42)
-            data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=10000, seed=43)
+            data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=1000, seed=42)
+            data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=20000, seed=43)
         tokenizer = AutoTokenizer.from_pretrained(
             "bert-base-uncased",
         )
         for i,x in enumerate(tqdm(data_stream)):
-            if (i%10000)==0:
+            if (i%50000)==0:
                 print(tokenizer.decode(x["query_input_ids"].squeeze() ))
                 print(tokenizer.decode(x["pos_psgs_input_ids"].squeeze() ))
                 print(tokenizer.decode(x["neg_psgs_input_ids"].squeeze() ))
             yield format_example(x)
         
-
-    
-# def get_dataset(name:str, split:str):
-#     shard_id = jax.process_index()
-#     num_shards=jax.process_count()
-#     tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
-#     task = seqio.get_mixture_or_task(f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wtokens")
-#     train_set = task.get_dataset(split=split,
-#                                 sequence_length=None,
-#                                 shard_info=seqio.ShardInfo(shard_id,num_shards))
-#     if split=="train":
-#         train_set = train_set.shard(15,0)
-#     examples = list(tqdm(train_set.as_numpy_iterator(),desc="Loading examples"))
-#     extract_dpr_examples_w_tok =  partial(extract_dpr_examples, tokenizer=tokenizer)
-#     with Pool(300) as p:
-#         examples = list(tqdm(p.imap(extract_dpr_examples_w_tok, examples), total=len(examples), desc="Extracting examples"))
-    
-#     gen = sum(tqdm(examples,desc="Summing examples"), [])
-#     dataset = datasets.Dataset.from_list(gen)
-#     dataset = dataset.shuffle(seed=42)
-#     dataset.save_to_disk(f"gs://meliad2_us2/datasets/dpr_datasets/{name}_one_tenth/{split}/hfformat_{shard_id}-{num_shards}")
-    
-#     # return dataset
 
 
 import fire
