@@ -199,7 +199,7 @@ def load_from_seqio(name, split):
     shard_id = jax.process_index()
     num_shards=jax.process_count()
     
-    task = seqio.get_mixture_or_task(f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wtokens")
+    task = seqio.get_mixture_or_task(f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wloss")
     dataset = task.get_dataset(split=split,
                                 sequence_length=None,
                                 shard_info=seqio.ShardInfo(shard_id,num_shards),
