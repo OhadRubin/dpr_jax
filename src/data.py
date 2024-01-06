@@ -26,83 +26,107 @@ def extract_dpr_examples(element):
         if len(value["positive_ctxs"])==1 and len(value["hard_negative_ctxs"])==1:
             final_list.append(value)
     return final_list
-
-        
-# from functools import partial
-# from multiprocessing import Process, Queue
-# from functools import partial
-
-# # Define the worker function template
-# def worker(input_queue, output_queue, process_function, limit=None):
-#     cnt=0
-
-#     while True:
-#         item = input_queue.get()
-#         if item is None:
-#             break
-        
-#         for result in process_function(item):
-#             output_queue.put(result)
-#         if limit is not None:
-#             if cnt>limit:
-#                 break
-#         cnt+=1
-#     output_queue.put(None)  # Signal the next worker to shut down
-
-
-
-
-
-
-# def data_generator(method, dataset, pooling_obj, lm_tokenizer,
-#                    retriever_tokenizer, K, chunk_length, max_neighbors,
-#                    batch_size,
-#                    limit_books=None
-#                    ):
-#     process_object = partial(process_book,method=method, pooling_obj=pooling_obj,
-#                              lm_tokenizer=lm_tokenizer, retriever_tokenizer=retriever_tokenizer,K=K)
-#     process_example = partial(flatten_element,chunk_length=chunk_length,max_neighbors=max_neighbors)
-#     # process_stack = partial(stack_candidates,batch_size=batch_size)
-#     num_workers = 2  # Two stages in your pipeline
-
-#     # Create the queues for communication
-#     queues = [Queue() for _ in range(num_workers + 1)]
-#     output_queue = queues[-1]
-
-#     # Create and start the workers for each stage
-#     book_worker = Process(target=worker, args=(queues[0], queues[1], process_object), kwargs=dict(limit=limit_books))
-#     flatten_worker = Process(target=worker, args=(queues[1], queues[2], process_example))
-#     # stacking_worker = Process(target=worker, args=(queues[2], queues[3], process_stack))
-#     book_worker.start()
-#     flatten_worker.start()
-#     try:
-#         # Feed the dataset items to the first queue
-#         for obj in enumerate(dataset):
-#             queues[0].put(obj)
-
-#         # Signal the first worker to shut down after all items are queued
-#         queues[0].put(None)
-#         def my_iter():
-#             while True:
-#                 result = output_queue.get()
-#                 if result is None:
-#                     break
-#                 yield result
-#         for batch in stack_candidates(my_iter(), batch_size):
-#             yield batch
-#         # Collect the final results
-        
-#     finally:
-#         # Wait for all workers to finish
-#         book_worker.join()
-#         flatten_worker.join()
-
         
 
 import jax
 from functools import partial
 from src.proc_utils import run_mapping_pipeline,delayed
-# tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
+
+
+import numpy as np
+import itertools
+from more_itertools import chunked
+def unstack_element(element,n_examples=None):
+    keys = list(element.keys())
+    if n_examples is None:
+        n_examples = len(element[keys[0]])
+    for i in range(n_examples):
+        micro_element = {}
+        for key in keys:
+            try:
+                micro_element[key] = element[key][i]
+            except:
+                print([(key,len(element[key])) for key in keys])
+                raise
+        yield micro_element
+
+def parse_psg(p):
+    return "Passage: "+ p['title'] + " " + p['text']
+def detok_parse_psg(p,tokenizer):
+    return "Passage: "+ tokenizer.decode(p['text'])
+from functools import wraps
+def tokenize_examples(example,
+                    tokenizer,
+                    q_max_len,
+                    p_max_len,
+                    query_field="question",
+                    pos_field="positive_ctxs",
+                    neg_field="hard_negative_ctxs",
+                    detokenizer=None,
+                    ):
+    tokenize = partial(tokenizer,
+                        return_attention_mask=True,
+                        return_token_type_ids=False,
+                        padding=True,
+                        truncation=True)
+    if detokenizer is None:
+        query = "Question: "+str(example[query_field])
+        pos_psgs = [parse_psg(p) for p in list(unstack_element(example[pos_field]))]
+        neg_psgs = [parse_psg(p) for p in list(unstack_element(example[neg_field]))]
+    else:
+        query = detokenizer.decode(example[query_field])
+        query = "Question: "+str(query)
+        pos_psgs = [detok_parse_psg(p, detokenizer) for p in example[pos_field]]
+        neg_psgs = [detok_parse_psg(p, detokenizer) for p in example[neg_field]]
+    def tok(x,l):
+        return dict(tokenize(x, max_length=l,padding='max_length', return_tensors='np'))
+    _query = tok(query, q_max_len)
+    query_input_ids = _query["input_ids"]
+    query_attention_mask = _query["attention_mask"]
+    _pos_psgs = [tok(x,p_max_len) for x in pos_psgs ]
+    _neg_psgs = [tok(x,p_max_len) for x in neg_psgs ]
+    return dict(query_input_ids=query_input_ids,
+                query_attention_mask=query_attention_mask,
+                pos_psgs_input_ids=np.stack([x["input_ids"] for x in _pos_psgs]),
+                pos_psgs_attention_mask=np.stack([x["attention_mask"] for x in _pos_psgs]),
+                neg_psgs_input_ids=np.stack([x["input_ids"] for x in _neg_psgs]),
+                neg_psgs_attention_mask=np.stack([x["attention_mask"] for x in _neg_psgs]),
+                )
+def inner_create_tokenize_examples(tokenizer_name, q_max_len, p_max_len, cache_dir=None):
+    detokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
+    tokenizer = AutoTokenizer.from_pretrained(
+        tokenizer_name,
+        cache_dir=cache_dir,
+    )
+    @wraps(tokenize_examples)
+    def our_tokenize_examples(example):
+        return [tokenize_examples(example,
+                                tokenizer,
+                                q_max_len,
+                                p_max_len,
+                                detokenizer=detokenizer)]
+    return our_tokenize_examples
+def create_tokenize_examples(model_args, data_args):
+    return inner_create_tokenize_examples(model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
+                                        data_args.q_max_len,
+                                        data_args.p_max_len,
+                                        cache_dir=model_args.cache_dir)
+
+    
+def shuffled_streaming_iterator(iterable, chunk_size=10, seed=None):
+    """
+    An iterator that shuffles elements of the given iterable in chunks,
+    using a numpy RandomState for reproducibility.
+    """
+    iterator = iter(iterable)
+    random_state = np.random.RandomState(seed)
+
+    for chunk in chunked(iterator, chunk_size):
+        random_state.shuffle(chunk)
+        for item in chunk:
+            yield item
+
+
 def load_from_seqio(name, split):
     shard_id = jax.process_index()
     num_shards=jax.process_count()
@@ -112,8 +136,26 @@ def load_from_seqio(name, split):
                                 sequence_length=None,
                                 shard_info=seqio.ShardInfo(shard_id,num_shards))
     yield from dataset.as_numpy_iterator()
+    
+    
 def test_stuff():
     delayed_dataset =  delayed(partial(load_from_seqio, name="codeparrot",split="train"))()
+    from tqdm import tqdm
+    
+
+    data_stream = run_mapping_pipeline(delayed_dataset, map_functions = [extract_dpr_examples, 
+                                                                         inner_create_tokenize_examples("bert-base-uncased", 128, 128)],
+                                       num_workers=50)
+    data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=20000, seed=42)
+    tokenizer = AutoTokenizer.from_pretrained(
+        "bert-base-uncased",
+    )
+    for i,x in enumerate(tqdm(data_stream)):
+        if (i%10000)==0:
+            print(tokenizer.decode(x["query_input_ids"].squeeze() ))
+            print(tokenizer.decode(x["pos_psgs_input_ids"].squeeze() ))
+            print(tokenizer.decode(x["neg_psgs_input_ids"].squeeze() ))
+
     
 def get_dataset(name:str, split:str):
     shard_id = jax.process_index()

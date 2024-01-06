@@ -120,7 +120,7 @@ class DataArguments:
     encode_shard_index: int = field(default=0)
 
     q_max_len: int = field(
-        default=32,
+        default=128,
         metadata={
             "help": "The maximum total input sequence length after tokenization for query. Sequences longer "
                     "than this will be truncated, sequences shorter will be padded."
@@ -525,19 +525,7 @@ from datasets import IterableDataset
 
 
 
-def unstack_element(element,n_examples=None):
-    keys = list(element.keys())
-    if n_examples is None:
-        n_examples = len(element[keys[0]])
-    for i in range(n_examples):
-        micro_element = {}
-        for key in keys:
-            try:
-                micro_element[key] = element[key][i]
-            except:
-                print([(key,len(element[key])) for key in keys])
-                raise
-        yield micro_element
+
 import numpy as np
 from datasets.distributed import split_dataset_by_node
 import time
@@ -630,41 +618,6 @@ def main():
         print(train_dataset)
         print(validation_dataset)
 
-    def tokenize_examples(example,
-                          query_field="question",
-                          pos_field="positive_ctxs",
-                          neg_field="hard_negative_ctxs"):
-        tokenize = partial(tokenizer,
-                           return_attention_mask=True,
-                           return_token_type_ids=False,
-                           padding=True,
-                           truncation=True)
-        def parse_psg(p):
-            if "title" in p.keys():
-                return "Passage: "+ p['title'] + " " + p['text']
-            else:
-                return "Passage: "+ p['text']
-        query = "Question: "+str(example[query_field])
-        if isinstance(example[pos_field],dict):
-            pos_psgs = [parse_psg(p) for p in list(unstack_element(example[pos_field]))]
-            neg_psgs = [parse_psg(p) for p in list(unstack_element(example[neg_field]))]
-        else:
-            pos_psgs = [parse_psg(p) for p in example[pos_field]]
-            neg_psgs = [parse_psg(p) for p in example[neg_field]]
-        def tok(x,l):
-            return dict(tokenize(x, max_length=l,padding='max_length', return_tensors='np'))
-        _query = tok(query, data_args.q_max_len)
-        query_input_ids = _query["input_ids"]
-        query_attention_mask = _query["attention_mask"]
-        _pos_psgs = [tok(x,data_args.p_max_len) for x in pos_psgs ]
-        _neg_psgs = [tok(x,data_args.p_max_len) for x in neg_psgs ]
-        return dict(query_input_ids=query_input_ids,
-                    query_attention_mask=query_attention_mask,
-                    pos_psgs_input_ids=[x["input_ids"] for x in _pos_psgs],
-                    pos_psgs_attention_mask=[x["attention_mask"] for x in _pos_psgs],
-                    neg_psgs_input_ids=[x["input_ids"] for x in _neg_psgs],
-                    neg_psgs_attention_mask=[x["attention_mask"] for x in _neg_psgs],
-                    )
     
     
     train_data = train_dataset.map(
