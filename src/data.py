@@ -7,12 +7,12 @@ from transformer import tasks
 from tqdm import tqdm
 from multiprocessing import Pool
 from functools import partial
-def extract_dpr_examples(element, tokenizer):
+def extract_dpr_examples(element):
     neig = element["neig"]
     targets = element["targets"]
     chunk_id_list ,candidate_idx_list, candidate_rank_list = neig.reshape([-1,3]).T
     chunks = targets.reshape([-1,64])
-    chunks = tokenizer.batch_decode(chunks, skip_special_tokens=True)
+    # chunks = tokenizer.batch_decode(chunks, skip_special_tokens=True)
     examples_dict = dict()
     
     for chunk_id,candidate_idx,candidate_rank in zip(chunk_id_list ,candidate_idx_list, candidate_rank_list):
