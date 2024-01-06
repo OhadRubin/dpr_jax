@@ -12,7 +12,6 @@ def extract_dpr_examples(element):
     targets = element["targets"]
     chunk_id_list ,candidate_idx_list, candidate_rank_list = neig.reshape([-1,3]).T
     chunks = targets.reshape([-1,64])
-    # chunks = tokenizer.batch_decode(chunks, skip_special_tokens=True)
     examples_dict = dict()
     
     for chunk_id,candidate_idx,candidate_rank in zip(chunk_id_list ,candidate_idx_list, candidate_rank_list):
@@ -26,7 +25,6 @@ def extract_dpr_examples(element):
     for value in examples_dict.values():
         if len(value["positive_ctxs"])==1 and len(value["hard_negative_ctxs"])==1:
             final_list.append(value)
-            # del examples_dict[chunk_id]
     return final_list
 
         
