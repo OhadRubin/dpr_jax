@@ -37,11 +37,15 @@ def map_process(input_queue, output_queue, map_function, done_input_cnt,done_out
                 
 
 
-def run_mapping_pipeline(data_source, map_functions, num_workers=10):
+def run_mapping_pipeline(data_source, map_functions, num_workers=10,maxsize=None):
     num_stages = len(map_functions)
 
     # Queues for each stage, including the reader
-    queues = [multiprocessing.Queue() for _ in range(num_stages+1)]
+    if maxsize is None:
+        queues = [multiprocessing.Queue() for _ in range(num_stages+1)]
+    else:
+        assert isinstance(maxsize,list)  
+        queues = [multiprocessing.Queue(maxsize=m) for _,m in zip(range(num_stages+1),maxsize)]
     
     done_cnt = [(multiprocessing.Value('i', 0),1)]
     for _ in range(num_stages):

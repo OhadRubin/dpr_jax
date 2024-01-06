@@ -448,7 +448,7 @@ import numpy as np
 
 
 
-from datasets import IterableDataset
+
 
 
 
@@ -521,25 +521,30 @@ def main():
         }
     else:
         data_files = None
-    if False:
-        dataset = datasets.load_dataset(data_args.dataset_name, data_args.config_name,
-                                  cache_dir=model_args.cache_dir,
-                                  streaming=data_args.streaming,
-                                data_files=data_files)
-        train_dataset = dataset["train"]
-        train_dataset = split_dataset_by_node(train_dataset, jax.process_index(), 12)
-        train_dataset = train_dataset.shuffle(seed=42, 
-                                            #   **(dict(buffer_size=1000) if data_args.streaming else {})
-                                              )
+    # if False:
+    #     dataset = datasets.load_dataset(data_args.dataset_name, data_args.config_name,
+    #                               cache_dir=model_args.cache_dir,
+    #                               streaming=data_args.streaming,
+    #                             data_files=data_files)
+    #     train_dataset = dataset["train"]
+    #     train_dataset = split_dataset_by_node(train_dataset, jax.process_index(), 12)
+    #     train_dataset = train_dataset.shuffle(seed=42, 
+    #                                         #   **(dict(buffer_size=1000) if data_args.streaming else {})
+    #                                           )
         
-        validation_dataset = dataset["validation"]
-        validation_dataset = split_dataset_by_node(validation_dataset, jax.process_index(), 12)
-        validation_dataset = validation_dataset.shuffle(seed=42,
-                                                        # **(dict(buffer_size=1000) if data_args.streaming else {})
-                                                        )
-    else:
-        train_data = get_dataset("codeparrot","train")
-        validation_data = get_dataset("codeparrot","validation")
+    #     validation_dataset = dataset["validation"]
+    #     validation_dataset = split_dataset_by_node(validation_dataset, jax.process_index(), 12)
+    #     validation_dataset = validation_dataset.shuffle(seed=42,
+    #                                                     # **(dict(buffer_size=1000) if data_args.streaming else {})
+    #                                                     )
+    # else:
+    num_train_steps = int(training_args.num_train_steps)
+    train_batch_size = int(training_args.per_device_train_batch_size) * jax.local_device_count()
+    train_data = get_dataset("codeparrot","train")
+    validation_data = get_dataset("codeparrot","validation")
+    # print(next(validation_data))
+    train_loader = get_dataloader(train_data,train_batch_size)
+    validation_loader = get_dataloader(validation_data, train_batch_size)        
 
     try:
         model = FlaxAutoModel.from_pretrained(
@@ -578,8 +583,7 @@ def main():
         return jax.tree_unflatten(treedef, masks)
 
     # num_epochs = int(training_args.num_train_epochs)
-    num_train_steps = int(training_args.num_train_steps)
-    train_batch_size = int(training_args.per_device_train_batch_size) * jax.local_device_count()
+    
     # steps_per_epoch = len(train_dataset) // train_batch_size
     # total_train_steps = steps_per_epoch * num_epochs
 
@@ -636,8 +640,7 @@ def main():
     logger.info(f"  Total optimization steps = {num_train_steps}")
 
     train_metrics = []
-    train_loader = get_dataloader(train_data)
-    validation_loader = get_dataloader(validation_data)
+    
 
     for step in tqdm(range(num_train_steps), position=0):
         # ======================== Training ================================

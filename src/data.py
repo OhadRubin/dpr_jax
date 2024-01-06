@@ -64,6 +64,7 @@ def tokenize_examples(example,
                     neg_field="hard_negative_ctxs",
                     detokenizer=None,
                     ):
+    print(example)
     tokenize = partial(tokenizer,
                         return_attention_mask=True,
                         return_token_type_ids=False,
@@ -128,7 +129,7 @@ def shuffled_streaming_iterator(iterable, chunk_size=10, seed=None):
 
 
 import random
-
+from torch.utils.data import DataLoader, IterableDataset
 import numpy as np
 class IterableDatasetWrapper(IterableDataset):
     def __init__(self, dataset):
@@ -155,7 +156,7 @@ def package(result):
     psgs = {"input_ids":batch['psgs_input_ids'],"attention_mask":batch['psgs_attention_mask']}
     return query,psgs
 
-from torch.utils.data import DataLoader, IterableDataset
+
 
 def format_example(x, n_passages=2, top_elements=1):
     neg_psgs_input_ids = x["neg_psgs_input_ids"]
@@ -181,6 +182,7 @@ def format_example(x, n_passages=2, top_elements=1):
                 psgs_input_ids=psgs_input_ids,psgs_attention_mask=psgs_attention_mask)
     return el
 
+from more_itertools import peekable
 def get_dataloader(data, batch_size):
     
     iterable = IterableDatasetWrapper(data) 
@@ -188,6 +190,8 @@ def get_dataloader(data, batch_size):
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v)
                             )
+    dloader = peekable(dloader)
+    dloader.peek()
     return iter(dloader)
 
 def load_from_seqio(name, split):
@@ -208,9 +212,11 @@ def get_dataset(name:str, split:str):
 
     data_stream = run_mapping_pipeline(delayed_dataset, map_functions = [extract_dpr_examples, 
                                                                          inner_create_tokenize_examples("bert-base-uncased", 128, 128)],
-                                       num_workers=50)
-    data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=5000, seed=42)
-    data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=10000, seed=43)
+                                       num_workers=50 if split=="train" else 10,
+                                       maxsize=[100,100*256,100*256])
+    if split=="train":
+        data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=5000, seed=42)
+        data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=10000, seed=43)
     tokenizer = AutoTokenizer.from_pretrained(
         "bert-base-uncased",
     )
