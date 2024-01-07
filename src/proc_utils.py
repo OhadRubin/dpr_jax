@@ -23,7 +23,7 @@ def data_reader(delayed_source, output_queue, done_output_cnt):
     # Read data in chunks
     print('data_reader')
     print(delayed_source)
-    for data_chunk in delayed_source:
+    for data_chunk in delayed_source():
         output_queue.put(data_chunk)
     done_output_cnt[0].value += 1
 
@@ -69,14 +69,11 @@ def run_mapping_pipeline(data_source, map_functions, num_workers=10,maxsize=None
             workers.append(worker)
     def gen():
     # Collect results and handle end signals
-        end_signals = 0
         try:
-            while end_signals < num_workers:  # Wait for all map workers to send end signal
+            while done_cnt[-1].value < num_workers:  # Wait for all map workers to send end signal
                 result = queues[-1].get()
-                if result is None:
-                    end_signals += 1
-                else:
-                    yield result
+                yield result
+                    
         except KeyboardInterrupt:
             for worker in workers:
                 worker.terminate()
