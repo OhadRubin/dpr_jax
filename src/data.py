@@ -140,6 +140,7 @@ class IterableDatasetWrapper(IterableDataset):
         self.dataset = dataset
     def __iter__(self):
         print(f"{self.dataset=}")
+        print(f"{type(self.dataset)=}")
         yield from iter(self.dataset)
 from einops import rearrange
 from flax.training.common_utils import shard
