@@ -105,10 +105,13 @@ def load_from_seqio(name, split):
         dataset = task.get_dataset(split=split,
                                     sequence_length=None,
                                     shard_info=seqio.ShardInfo(jax.process_index(),jax.process_count()),
+                                    seed=0,
+                                    shuffle_buffer_size=10000,
                                     )
     else:
         dataset = task.get_dataset(split=split,
                                     sequence_length=None,
+                                    shuffle=False
                                     ).take(100)
     itr = iter(dataset.as_numpy_iterator())
     # itr = peekable(itr)
