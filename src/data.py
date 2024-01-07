@@ -92,25 +92,19 @@ def tokenize_examples(example,
                 neg_psgs_input_ids=np.stack([x["input_ids"] for x in _neg_psgs]),
                 neg_psgs_attention_mask=np.stack([x["attention_mask"] for x in _neg_psgs]),
                 )
-def inner_create_tokenize_examples(tokenizer_name, q_max_len, p_max_len, cache_dir=None):
+def create_tokenize_examples(model_args, data_args):
     detokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neox-20b")
-    tokenizer = AutoTokenizer.from_pretrained(
-        tokenizer_name,
-        cache_dir=cache_dir,
-    )
+    tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
+                                              cache_dir=model_args.cache_dir)
     @wraps(tokenize_examples)
     def our_tokenize_examples(example):
         return [tokenize_examples(example,
                                 tokenizer,
-                                q_max_len,
-                                p_max_len,
+                                data_args.q_max_len,
+                                data_args.p_max_len,
                                 detokenizer=detokenizer)]
     return our_tokenize_examples
-def create_tokenize_examples(model_args, data_args):
-    return inner_create_tokenize_examples(model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
-                                        data_args.q_max_len,
-                                        data_args.p_max_len,
-                                        cache_dir=model_args.cache_dir)
+
 
     
 def shuffled_streaming_iterator(iterable, chunk_size=10, seed=None):
@@ -198,10 +192,34 @@ def get_dataloader(data, batch_size):
 import itertools
 
 
-def get_dataset(dataset,split):
+def load_from_seqio(name, split):    
+    ds_name = f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wtokens"
+    task = seqio.get_mixture_or_task(ds_name)
+    if split=="train":
+        dataset = task.get_dataset(split=split,
+                                    sequence_length=None,
+                                    shard_info=seqio.ShardInfo(jax.process_index(),jax.process_count()),
+                                    )
+    else:
+        dataset = task.get_dataset(split=split,
+                                    sequence_length=None,
+                                    )
+    itr = dataset.as_numpy_iterator()
+    itr = peekable(itr)
+    itr.peek()
+    if split!="train":
+        itr = list(tqdm(itr,desc="Loading examples from dev"))
+    for x in itr:
+        yield x
+        
+def get_dataset(split, model_args, data_args):
+    dataset = peekable(load_from_seqio(name=data_args.dataset_name,split=split))
+    dataset.peek()
     while True:
-        data_stream = run_mapping_pipeline(itertools.cycle(dataset), map_functions = [extract_dpr_examples, 
-                                                                            inner_create_tokenize_examples("bert-base-uncased", 128, 128)],
+        map_functions = [extract_dpr_examples, 
+                        create_tokenize_examples(model_args, data_args)]
+        data_stream = run_mapping_pipeline(itertools.cycle(dataset),
+                                        map_functions=map_functions,
                                         num_workers=50,
                                         maxsize=[100,100*256,100*256],
                                         )
