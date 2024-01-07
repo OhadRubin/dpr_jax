@@ -212,10 +212,13 @@ def load_from_seqio(name, split):
         itr = list(tqdm(itr,desc="Loading examples from dev"))
     for x in itr:
         yield x
-        
-def get_dataset(split, model_args, data_args):
+
+def get_dataset(split, data_args):
     dataset = peekable(load_from_seqio(name=data_args.dataset_name,split=split))
     dataset.peek()
+    return dataset
+
+def get_dataset_iter(dataset, split, model_args, data_args):
     while True:
         map_functions = [extract_dpr_examples, 
                         create_tokenize_examples(model_args, data_args)]

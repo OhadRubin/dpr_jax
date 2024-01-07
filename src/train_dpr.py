@@ -75,7 +75,7 @@ from transformers import (
 import os
 from dataclasses import dataclass, field
 from typing import Optional, List
-from src.data import get_dataset, get_dataloader
+from src.data import get_dataset, get_dataloader, get_dataset_iter
 from collections import namedtuple
 from datasets import disable_caching
 disable_caching()
@@ -258,9 +258,13 @@ def main():
 
     num_train_steps = int(training_args.num_train_steps)
     train_batch_size = int(training_args.per_device_train_batch_size) * jax.local_device_count()
-    validation_data = get_dataset("validation", model_args, data_args)
+    
+    validation_dataset = get_dataset("validation", data_args)
+    validation_data = get_dataset_iter(validation_dataset, "validation", model_args, data_args)
     validation_loader = get_dataloader(validation_data, train_batch_size)
-    train_data = get_dataset("train", model_args, data_args)
+    
+    train_dataset = get_dataset("train", data_args)
+    train_data = get_dataset_iter(train_dataset, "train", model_args, data_args)
     train_loader = get_dataloader(train_data,train_batch_size)
 
     try:
