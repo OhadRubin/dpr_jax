@@ -58,7 +58,6 @@ def run_mapping_pipeline(data_source, map_functions, num_workers=10,maxsize=None
     for _ in range(num_stages):
         done_cnt.append((multiprocessing.Value('i', 0),num_workers))
     # Start the data reader worker
-    print('starting data_reader')
     reader_process = multiprocessing.Process(target=data_reader, args=(data_source, queues[0], done_cnt[0]))
 
     reader_process.start()
@@ -72,23 +71,27 @@ def run_mapping_pipeline(data_source, map_functions, num_workers=10,maxsize=None
             workers.append(worker)
     # def gen():
     # Collect results and handle end signals
-    print("starting gen")
-    while done_cnt[-1][0].value < num_workers:  # Wait for all map workers to send end signal
-        result = queues[-1].get()
-        yield result
-        print("yielded")
-    # try:
+    try:
+        while done_cnt[-1][0].value < num_workers:  # Wait for all map workers to send end signal
+            result = queues[-1].get()
+            yield result
+            print("yielded")
                 
-    # except KeyboardInterrupt:
-    #     for worker in workers:
-    #         worker.terminate()
-    #     reader_process.terminate()
-    #     raise
-    # finally:
-    #     for queue in queues:
-    #         queue.close()
-    #         queue.join_thread()
-    #     reader_process.join()
-    #     for worker in workers:
-    #         worker.join()
+    except KeyboardInterrupt:
+        for worker in workers:
+            worker.terminate()
+        reader_process.terminate()
+        raise
+    except Exception as e:
+        for worker in workers:
+            worker.terminate()
+        reader_process.terminate()
+        raise e
+    finally:
+        for queue in queues:
+            queue.close()
+            queue.join_thread()
+        reader_process.join()
+        for worker in workers:
+            worker.join()
     # return gen
