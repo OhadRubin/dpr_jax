@@ -139,15 +139,13 @@ class IterableDatasetWrapper(IterableDataset):
         self.dataset = dataset
         self.split=split
     def __iter__(self):
-        print(f"{self.dataset=}")
-        print(f"{type(self.dataset)=}")
         while True:
-            curr_dataset = self.dataset()
-            itr = iter(curr_dataset())
-            if self.split=="train":
-                itr =  shuffled_streaming_iterator(itr, chunk_size=1000, seed=42)
-                itr =  shuffled_streaming_iterator(itr, chunk_size=20000, seed=43)
-            yield from itertools.cycle(itr)
+            # curr_dataset = ()
+            # itr = iter(curr_dataset())
+            # if self.split=="train":
+            #     itr =  shuffled_streaming_iterator(itr, chunk_size=1000, seed=42)
+            #     itr =  shuffled_streaming_iterator(itr, chunk_size=20000, seed=43)
+            yield from iter(self.dataset)
 from einops import rearrange
 from flax.training.common_utils import shard
 def package(result):
@@ -227,28 +225,28 @@ def load_from_seqio(name, split):
 
 import time
 def get_dataloader(split, batch_size, model_args, data_args):
-    def my_itr():
-        def create_ds():
-            return load_from_seqio(name=data_args.dataset_name,split=split)
-        map_functions = [extract_dpr_examples, 
-                        create_tokenize_examples(model_args, data_args),
-                        lambda x: [format_example(x)]]
-        data_stream = run_mapping_pipeline(create_ds,
-                                        map_functions=map_functions,
-                                        num_workers=20,
-                                        maxsize=[1000,1000*256,1000*256, 1000*256],
-                                        )
-        return data_stream
-    print("sleeping")
-    time.sleep(10)
-    print("waking up")
-    iterable = IterableDatasetWrapper(my_itr,split=split) 
+    # def my_itr():
+    def create_ds():
+        return load_from_seqio(name=data_args.dataset_name,split=split)
+    map_functions = [extract_dpr_examples, 
+                    create_tokenize_examples(model_args, data_args),
+                    lambda x: [format_example(x)]]
+    data_stream = run_mapping_pipeline(create_ds,
+                                    map_functions=map_functions,
+                                    num_workers=20,
+                                    maxsize=[1000,1000*256,1000*256, 1000*256],
+                                    )
+        # return data_stream
+    # print("sleeping")
+    # time.sleep(10)
+    # print("waking up")
+    iterable = IterableDatasetWrapper(data_stream,split=split) 
     dloader= DataLoader(iterable,
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v)
                             )
-    dloader = peekable(dloader)
-    dloader.peek()
+    # dloader = peekable(dloader)
+    # dloader.peek()
     # dl_iter = repeat(dloader)
     return iter(dloader)
 
