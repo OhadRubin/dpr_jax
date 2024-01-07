@@ -147,7 +147,7 @@ class IterableDatasetWrapper(IterableDataset):
             if self.split=="train":
                 itr =  shuffled_streaming_iterator(itr, chunk_size=1000, seed=42)
                 itr =  shuffled_streaming_iterator(itr, chunk_size=20000, seed=43)
-            yield from itr
+            yield from itertools.cycle(itr)
 from einops import rearrange
 from flax.training.common_utils import shard
 def package(result):
