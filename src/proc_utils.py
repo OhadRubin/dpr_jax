@@ -36,7 +36,7 @@ def map_process(input_queue, output_queue, map_function, done_input_cnt,done_out
     done_output_cnt[0].value += 1
                 
 
-
+import time
 def run_mapping_pipeline(data_source, map_functions, num_workers=10,maxsize=None):
     
     

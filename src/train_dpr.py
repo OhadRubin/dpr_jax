@@ -95,41 +95,6 @@ import wandb
 
 from fsspec.generic import rsync
 import shutil
-from more_itertools import peekable
-import tensorflow as tf
-def load_from_seqio(name, split):
-    suffix="seq1024" if name!="pg19" else "twi_seq1024"
-    ds_name = f"{name}neox_retro_nn20_f20_entirebook_qa_{suffix}_16384_wtokens"
-    task = seqio.get_mixture_or_task(ds_name)
-    if split=="train":
-        dataset = task.get_dataset(split=split,
-                                    sequence_length=None,
-                                    shard_info=seqio.ShardInfo(jax.process_index(),jax.process_count()),
-                                    shuffle=False,
-                                    use_cached=False,
-                                    )
-    else:
-        dataset = task.get_dataset(split=split,
-                                    sequence_length=None,
-                                    shuffle=False
-                                    ).take(100)
-        #autotune = tf.data.experimental.AUTOTUNE
-    return dataset.prefetch(tf.data.experimental.AUTOTUNE)
-    # itr = dataset.as_numpy_iterator()
-    # itr.next()
-    # # itr = peekable(itr)
-    # # itr.peek()
-    # if split!="train":
-    #     itr = list(tqdm(itr,desc="Loading examples from dev"))
-    # for x in itr:
-    #     yield x
-
-def get_dataset(split, data_args):
-    dataset = load_from_seqio(name=data_args.dataset_name,split=split)
-    return dataset
-    dataset = peekable(dataset)
-    dataset.peek()
-    return dataset
 
 
 def save_to_cloud(model, params, remote_model_path, local_model_path = "/tmp/local_model"):
