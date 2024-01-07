@@ -215,8 +215,9 @@ class IterableDatasetWrapper(IterableDataset):
         self.dataset = dataset
         self.split=split
     def __iter__(self):
-        itr = itertools.cycle(iter(self.dataset))
+        itr = iter(self.dataset)
         if self.split!="train":
+            itr = itertools.cycle(itr)
             yield from iter(itr)
         else:
             itr  =shuffled_streaming_iterator(iter(itr), chunk_size=5000, seed=0)
