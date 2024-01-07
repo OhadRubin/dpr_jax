@@ -22,17 +22,19 @@ def extract_dpr_examples(element):
     chunk_id_list ,candidate_idx_list, candidate_rank_list = neig.reshape([-1,3]).T
     chunks = targets.reshape([-1,64])
     examples_dict = dict()
+    start_of_hard_neg = 5
+    n_hard_neg = 7
     
     for chunk_id,candidate_idx,candidate_rank in zip(chunk_id_list ,candidate_idx_list, candidate_rank_list):
         if chunk_id not in examples_dict:
             examples_dict[chunk_id] = {"question":chunks[chunk_id], "positive_ctxs":[], "hard_negative_ctxs":[]}
         if candidate_rank==0:
             examples_dict[chunk_id]["positive_ctxs"].append({"text":chunks[candidate_idx]})
-        if candidate_rank==5:
+        if start_of_hard_neg<=candidate_rank<start_of_hard_neg+n_hard_neg:
             examples_dict[chunk_id]["hard_negative_ctxs"].append({"text":chunks[candidate_idx]})
     final_list = []
     for value in examples_dict.values():
-        if len(value["positive_ctxs"])==1 and len(value["hard_negative_ctxs"])==1:
+        if len(value["positive_ctxs"])==1 and len(value["hard_negative_ctxs"])==n_hard_neg:
             final_list.append(value)
     return final_list
         
@@ -222,9 +224,7 @@ class IterableDatasetWrapper(IterableDataset):
                 yield from iter(itr)
                 
 
-import time
 def get_dataloader(split, batch_size, model_args, data_args):
-    # def my_itr():
     def create_ds():
         return load_from_seqio(name=data_args.dataset_name,split=split)
     map_functions = [extract_dpr_examples, 
@@ -243,29 +243,8 @@ def get_dataloader(split, batch_size, model_args, data_args):
     dloader = iter(dloader)
     dloader = peekable(dloader)
     dloader.peek()
-    # dl_iter = repeat(dloader)
     return dloader
 
-    
-    # itr = dataset.as_numpy_iterator()
-    # itr.next()
-    # # itr = peekable(itr)
-    # # itr.peek()
-    # if split!="train":
-    #     itr = list(tqdm(itr,desc="Loading examples from dev"))
-    # for x in itr:
-    #     yield x
-# def get_dataset_iter(dataset, split, model_args, data_args):
-#     while True:
-#         # tokenizer = AutoTokenizer.from_pretrained(
-#         #     "bert-base-uncased",
-#         # )
-#         # for i,x in enumerate(tqdm(data_stream)):
-#         #     if (i%50000)==0:
-#         #         print(tokenizer.decode(x["query_input_ids"].squeeze() ))
-#         #         print(tokenizer.decode(x["pos_psgs_input_ids"].squeeze() ))
-#         #         print(tokenizer.decode(x["neg_psgs_input_ids"].squeeze() ))
-#         #     yield format_example(x)
         
 import itertools
 

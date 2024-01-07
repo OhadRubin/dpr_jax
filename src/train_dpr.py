@@ -170,7 +170,7 @@ class TevatronTrainingArguments:
     max_grad_norm: float = field(default=1.0, metadata={"help": "Max gradient norm."})
 
     per_device_train_batch_size: int = field(
-        default=64, metadata={"help": "Batch size per GPU/TPU/MPS/NPU core/CPU for training."}
+        default=8, metadata={"help": "Batch size per GPU/TPU/MPS/NPU core/CPU for training."}
     )
     logging_steps: float = field(
         default=10,
