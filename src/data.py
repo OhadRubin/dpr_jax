@@ -226,7 +226,7 @@ def get_dataloader(split, batch_size, model_args, data_args):
             data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=20000, seed=43)
         yield from data_stream
     
-    iterable = IterableDatasetWrapper(my_itr) 
+    iterable = IterableDatasetWrapper(my_itr()) 
     dloader= DataLoader(iterable,
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v)
