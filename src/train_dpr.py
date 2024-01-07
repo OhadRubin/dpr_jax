@@ -75,7 +75,7 @@ from transformers import (
 import os
 from dataclasses import dataclass, field
 from typing import Optional, List
-from src.data import get_dataset, get_dataloader, get_dataset_iter
+from src.data import get_dataloader, get_dataset_iter
 from collections import namedtuple
 from datasets import disable_caching
 disable_caching()
@@ -95,6 +95,34 @@ import wandb
 
 from fsspec.generic import rsync
 import shutil
+from more_itertools import peekable
+
+def load_from_seqio(name, split):
+    suffix="seq1024" if name!="pg19" else "twi_seq1024"
+    ds_name = f"{name}neox_retro_nn20_f20_entirebook_qa_{suffix}_16384_wtokens"
+    task = seqio.get_mixture_or_task(ds_name)
+    if split=="train":
+        dataset = task.get_dataset(split=split,
+                                    sequence_length=None,
+                                    shard_info=seqio.ShardInfo(jax.process_index(),jax.process_count()),
+                                    )
+    else:
+        dataset = task.get_dataset(split=split,
+                                    sequence_length=None,
+                                    ).take(100)
+    itr = dataset.as_numpy_iterator()
+    itr = peekable(itr)
+    itr.peek()
+    if split!="train":
+        itr = list(tqdm(itr,desc="Loading examples from dev"))
+    for x in itr:
+        yield x
+
+def get_dataset(split, data_args):
+    dataset = peekable(load_from_seqio(name=data_args.dataset_name,split=split))
+    dataset.peek()
+    return dataset
+
 
 def save_to_cloud(model, params, remote_model_path, local_model_path = "/tmp/local_model"):
     model.save_pretrained(local_model_path, params=params)
