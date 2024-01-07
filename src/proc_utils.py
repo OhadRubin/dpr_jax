@@ -72,12 +72,12 @@ def run_mapping_pipeline(data_source, map_functions, num_workers=10,maxsize=None
             workers.append(worker)
     # def gen():
     # Collect results and handle end signals
+    print("starting gen")
+    while done_cnt[-1].value < num_workers:  # Wait for all map workers to send end signal
+        result = queues[-1].get()
+        yield result
+        print("yielded")
     try:
-        print("starting gen")
-        while done_cnt[-1].value < num_workers:  # Wait for all map workers to send end signal
-            result = queues[-1].get()
-            yield result
-            print("yielded")
                 
     except KeyboardInterrupt:
         for worker in workers:
