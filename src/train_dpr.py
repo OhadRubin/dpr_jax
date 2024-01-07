@@ -184,9 +184,6 @@ class TevatronTrainingArguments:
     eval_steps: float = field(default=1000)
     n_eval_steps: int = field(default=100)
     
-    def __post_init__(self):
-        # "The output directory where the model predictions and checkpoints will be written."
-        self.output_dir
         
     
 
