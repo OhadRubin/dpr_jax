@@ -210,21 +210,23 @@ def load_from_seqio(name, split):
 
 
 def get_dataloader(split, batch_size, model_args, data_args):
-    def create_ds():
-        return load_from_seqio(name=data_args.dataset_name,split=split).as_numpy_iterator()
-    map_functions = [extract_dpr_examples, 
-                    create_tokenize_examples(model_args, data_args),
-                    lambda x: [format_example(x)]]
-    data_stream = run_mapping_pipeline(create_ds,
-                                    map_functions=map_functions,
-                                    num_workers=20,
-                                    maxsize=[100,100*256,100*256, 100*256],
-                                    )
-    if split=="train":
-        data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=1000, seed=42)
-        data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=20000, seed=43)
+    def my_itr():
+        def create_ds():
+            return load_from_seqio(name=data_args.dataset_name,split=split).as_numpy_iterator()
+        map_functions = [extract_dpr_examples, 
+                        create_tokenize_examples(model_args, data_args),
+                        lambda x: [format_example(x)]]
+        data_stream = run_mapping_pipeline(create_ds,
+                                        map_functions=map_functions,
+                                        num_workers=20,
+                                        maxsize=[100,100*256,100*256, 100*256],
+                                        )
+        if split=="train":
+            data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=1000, seed=42)
+            data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=20000, seed=43)
+        yield from data_stream
     
-    iterable = IterableDatasetWrapper(data_stream) 
+    iterable = IterableDatasetWrapper(my_itr) 
     dloader= DataLoader(iterable,
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v)
