@@ -202,9 +202,9 @@ def load_from_seqio(name, split):
                                     sequence_length=None,
                                     shuffle=False
                                     ).take(100)
-    itr = dataset.prefetch(tf.data.experimental.AUTOTUNE).as_numpy_iterator()
-    if split=="validation":
-        itr = list(tqdm(itr,desc="Loading examples from dev"))
+    itr = dataset.prefetch(tf.data.experimental.AUTOTUNE).repeat().as_numpy_iterator()
+    # if split=="validation":
+        # itr = list(tqdm(itr,desc="Loading examples from dev"))
     
     return itr
 
@@ -217,7 +217,7 @@ class IterableDatasetWrapper(IterableDataset):
     def __iter__(self):
         itr = iter(self.dataset)
         if self.split!="train":
-            itr = itertools.cycle(itr)
+            # itr = itertools.cycle(itr)
             yield from iter(itr)
         else:
             itr  =shuffled_streaming_iterator(iter(itr), chunk_size=5000, seed=0)
