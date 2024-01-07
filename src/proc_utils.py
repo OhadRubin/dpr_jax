@@ -55,6 +55,7 @@ def run_mapping_pipeline(data_source, map_functions, num_workers=10,maxsize=None
     for _ in range(num_stages):
         done_cnt.append((multiprocessing.Value('i', 0),num_workers))
     # Start the data reader worker
+    print('starting data_reader')
     reader_process = multiprocessing.Process(target=data_reader, args=(data_source, queues[0], done_cnt[0]))
 
     reader_process.start()
