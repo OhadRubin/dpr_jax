@@ -216,8 +216,8 @@ def get_dataloader(split, batch_size, model_args, data_args):
                     lambda x: [format_example(x)]]
     data_stream = run_mapping_pipeline(dataset.as_numpy_iterator(),
                                     map_functions=map_functions,
-                                    num_workers=50,
-                                    maxsize=[100,100*256,100*256],
+                                    num_workers=20,
+                                    maxsize=[100,100*256,100*256, 100*256],
                                     )
     if split=="train":
         data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=1000, seed=42)
