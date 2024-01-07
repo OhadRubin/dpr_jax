@@ -133,19 +133,7 @@ def shuffled_streaming_iterator(iterable, chunk_size=10, seed=None):
 import random
 from torch.utils.data import DataLoader, IterableDataset
 import numpy as np
-class IterableDatasetWrapper(IterableDataset):
-    def __init__(self, dataset,split):
-        super(IterableDatasetWrapper).__init__()
-        self.dataset = dataset
-        self.split=split
-    def __iter__(self):
-        while True:
-            # curr_dataset = ()
-            # itr = iter(curr_dataset())
-            # if self.split=="train":
-            #     itr =  shuffled_streaming_iterator(itr, chunk_size=1000, seed=42)
-            #     itr =  shuffled_streaming_iterator(itr, chunk_size=20000, seed=43)
-            yield from iter(self.dataset)
+
 from einops import rearrange
 from flax.training.common_utils import shard
 def package(result):
@@ -221,7 +209,19 @@ def load_from_seqio(name, split):
     return itr
 
 
-
+class IterableDatasetWrapper(IterableDataset):
+    def __init__(self, dataset,split):
+        super(IterableDatasetWrapper).__init__()
+        self.dataset = dataset
+        self.split=split
+    def __iter__(self):
+        while True:
+            # curr_dataset = ()
+            # itr = iter(curr_dataset())
+            # if self.split=="train":
+            #     itr =  shuffled_streaming_iterator(itr, chunk_size=1000, seed=42)
+            #     itr =  shuffled_streaming_iterator(itr, chunk_size=20000, seed=43)
+            yield from iter(self.dataset)
 
 import time
 def get_dataloader(split, batch_size, model_args, data_args):
