@@ -221,7 +221,7 @@ class IterableDatasetWrapper(IterableDataset):
             yield from iter(itr)
         else:
             # itr  =shuffled_streaming_iterator(iter(itr), chunk_size=5000, seed=0)
-            itr  =shuffled_streaming_iterator(iter(itr), chunk_size=200000, seed=1)
+            itr  =shuffled_streaming_iterator(iter(itr), chunk_size=2000000, seed=1)
             yield from iter(itr)
                 
 
