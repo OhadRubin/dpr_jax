@@ -110,7 +110,7 @@ def load_from_seqio(name, split):
         dataset = task.get_dataset(split=split,
                                     sequence_length=None,
                                     ).take(100)
-    itr = dataset.as_numpy_iterator()
+    itr = iter(dataset.as_numpy_iterator())
     itr = peekable(itr)
     itr.peek()
     if split!="train":
