@@ -139,7 +139,8 @@ class IterableDatasetWrapper(IterableDataset):
         super(IterableDatasetWrapper).__init__()
         self.dataset = dataset
     def __iter__(self):
-        yield from self.dataset
+        # print(self.dataset)
+        yield from self.dataset()
 from einops import rearrange
 from flax.training.common_utils import shard
 def package(result):
