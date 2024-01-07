@@ -157,7 +157,7 @@ def package(result):
 
 
 
-def format_example(x, n_passages=2, top_elements=1):
+def format_example(x, n_passages=8, top_elements=1):
     neg_psgs_input_ids = x["neg_psgs_input_ids"]
     neg_psgs_attention_mask = x["neg_psgs_attention_mask"]
     if len(neg_psgs_input_ids)<(n_passages-1):
