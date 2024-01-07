@@ -111,8 +111,8 @@ def load_from_seqio(name, split):
                                     sequence_length=None,
                                     ).take(100)
     itr = iter(dataset.as_numpy_iterator())
-    itr = peekable(itr)
-    itr.peek()
+    # itr = peekable(itr)
+    # itr.peek()
     if split!="train":
         itr = list(tqdm(itr,desc="Loading examples from dev"))
     for x in itr:
