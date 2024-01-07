@@ -153,13 +153,7 @@ class TevatronTrainingArguments:
         metadata={"help": "The output directory where the model predictions and checkpoints will be written."},
     )
     warmup_steps: int = field(default=2000)
-    negatives_x_device: bool = field(default=False, metadata={"help": "share negatives across devices"})
-    do_encode: bool = field(default=False, metadata={"help": "run the encoding loop"})
     seed: int = 42
-    grad_cache: bool = field(default=False, metadata={"help": "Use gradient cache update"})
-    gc_q_chunk_size: int = field(default=4)
-    gc_p_chunk_size: int = field(default=32)
-    do_train: bool = field(default=False, metadata={"help": "Whether to run training."})
     num_train_steps: float = field(default=50000, metadata={"help": "Total number of training steps to perform."})
     learning_rate: float = field(default=4e-5, metadata={"help": "The initial learning rate for AdamW."})
     weight_decay: float = field(default=0.0, metadata={"help": "Weight decay for AdamW if we apply some."})
@@ -179,23 +173,8 @@ class TevatronTrainingArguments:
             )
         },
     )
-    eval_steps: float = field(
-        default=1000,
-        metadata={
-            "help": (
-                "Eval every X updates steps. Should be an integer."
-            )
-        },
-    )
-    n_eval_steps: float = field(
-        default=100,
-        metadata={
-            "help": (
-                "Eval every X updates steps. Should be an integer."
-            )
-        },
-    )
-    local_rank: int = field(default=-1, metadata={"help": "For distributed training: local_rank"})
+    eval_steps: float = field(default=1000)
+    n_eval_steps: int = field(default=100)
     
 
 Array = Any
@@ -254,7 +233,6 @@ def main():
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO if training_args.local_rank in [-1, 0] else logging.WARN,
     )
 
     logger.info("Training/evaluation parameters %s", training_args)
