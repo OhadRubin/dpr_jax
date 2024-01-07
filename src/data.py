@@ -213,6 +213,7 @@ def load_from_seqio(name, split):
                                     sequence_length=None,
                                     shuffle=False
                                     ).take(100)
+    print("before fetching")
     return dataset.prefetch(tf.data.experimental.AUTOTUNE)
 
 
