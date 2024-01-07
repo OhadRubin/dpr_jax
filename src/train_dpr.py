@@ -75,7 +75,7 @@ from transformers import (
 import os
 from dataclasses import dataclass, field
 from typing import Optional, List
-from src.data import get_dataloader, get_dataset_iter
+from src.data import get_dataloader, get_dataset_iter, get_dataset
 from collections import namedtuple
 from datasets import disable_caching
 disable_caching()
