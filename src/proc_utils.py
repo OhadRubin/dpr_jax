@@ -69,8 +69,6 @@ def run_mapping_pipeline(data_source, map_functions, num_workers=10,maxsize=None
             worker = multiprocessing.Process(target=map_process, args=(queues[stage], queues[stage + 1], map_functions[stage], done_cnt[stage],done_cnt[stage+1]))
             worker.start()
             workers.append(worker)
-    # def gen():
-    # Collect results and handle end signals
     try:
         while True:
             if done_cnt[-1][0].value == num_workers and queues[-1].empty():

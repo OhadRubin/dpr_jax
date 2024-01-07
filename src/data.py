@@ -185,7 +185,6 @@ def load_from_seqio(name, split):
     from transformer import tasks
     import tensorflow as tf
     import seqio
-    print(f"inside load_from_seqio with {name=} and {split=}")
     suffix="seq1024" if name!="pg19" else "twi_seq1024"
     ds_name = f"{name}neox_retro_nn20_f20_entirebook_qa_{suffix}_16384_wtokens"
     task = seqio.get_mixture_or_task(ds_name)
@@ -201,7 +200,6 @@ def load_from_seqio(name, split):
                                     sequence_length=None,
                                     shuffle=False
                                     ).take(100)
-    print("before fetching")
     itr = dataset.prefetch(tf.data.experimental.AUTOTUNE).as_numpy_iterator()
     if split=="validation":
         itr = list(tqdm(itr,desc="Loading examples from dev"))
