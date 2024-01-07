@@ -38,6 +38,8 @@ def map_process(input_queue, output_queue, map_function, done_input_cnt,done_out
 
 
 def run_mapping_pipeline(data_source, map_functions, num_workers=10,maxsize=None):
+    
+    
     num_stages = len(map_functions)
 
     # Queues for each stage, including the reader

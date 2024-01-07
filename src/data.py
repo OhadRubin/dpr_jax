@@ -198,7 +198,8 @@ def get_dataset_iter(dataset, split, model_args, data_args):
     while True:
         map_functions = [extract_dpr_examples, 
                         create_tokenize_examples(model_args, data_args)]
-        data_stream = run_mapping_pipeline(itertools.cycle(dataset),
+        lambda : dataset
+        data_stream = run_mapping_pipeline(dataset.as_numpy_iterator(),
                                         map_functions=map_functions,
                                         num_workers=50,
                                         maxsize=[100,100*256,100*256],
