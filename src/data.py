@@ -215,6 +215,9 @@ def load_from_seqio(name, split):
                                     ).take(100)
     print("before fetching")
     itr = dataset.prefetch(tf.data.experimental.AUTOTUNE).as_numpy_iterator()
+    if split=="validation":
+        itr = list(tqdm(itr,desc="Loading examples from dev"))
+    
     return itr
 
 
