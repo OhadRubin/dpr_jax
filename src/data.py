@@ -243,7 +243,7 @@ def get_dataloader(split, batch_size, model_args, data_args):
     time.sleep(10)
     print("waking up")
     iterable = IterableDatasetWrapper(my_itr,split=split) 
-    dloader= DataLoader(itertools.cycle(iterable),
+    dloader= DataLoader(iterable,
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v)
                             )
