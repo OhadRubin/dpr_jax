@@ -203,51 +203,27 @@ def load_from_seqio(name, split):
                                     sequence_length=None,
                                     shuffle=False
                                     ).take(100)
-        #autotune = tf.data.experimental.AUTOTUNE
     return dataset.prefetch(tf.data.experimental.AUTOTUNE)
-    # itr = dataset.as_numpy_iterator()
-    # itr.next()
-    # # itr = peekable(itr)
-    # # itr.peek()
-    # if split!="train":
-    #     itr = list(tqdm(itr,desc="Loading examples from dev"))
-    # for x in itr:
-    #     yield x
 
-def get_dataset(split, data_args):
+
+
+
+
+def get_dataloader(split, batch_size, model_args, data_args):
     dataset = load_from_seqio(name=data_args.dataset_name,split=split)
-    print("after load_from_seqio")
-    return dataset
-    dataset = peekable(dataset)
-    dataset.peek()
-    return dataset
-
-def get_dataset_iter(dataset, split, model_args, data_args):
-    while True:
-        map_functions = [extract_dpr_examples, 
-                        create_tokenize_examples(model_args, data_args)]
-        data_stream = run_mapping_pipeline(dataset.as_numpy_iterator(),
-                                        map_functions=map_functions,
-                                        num_workers=50,
-                                        maxsize=[100,100*256,100*256],
-                                        )
-        if split=="train":
-            data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=1000, seed=42)
-            data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=20000, seed=43)
-        tokenizer = AutoTokenizer.from_pretrained(
-            "bert-base-uncased",
-        )
-        for i,x in enumerate(tqdm(data_stream)):
-            if (i%50000)==0:
-                print(tokenizer.decode(x["query_input_ids"].squeeze() ))
-                print(tokenizer.decode(x["pos_psgs_input_ids"].squeeze() ))
-                print(tokenizer.decode(x["neg_psgs_input_ids"].squeeze() ))
-            yield format_example(x)
-        
-
-def get_dataloader(data, batch_size):
+    map_functions = [extract_dpr_examples, 
+                    create_tokenize_examples(model_args, data_args),
+                    lambda x: [format_example(x)]]
+    data_stream = run_mapping_pipeline(dataset.as_numpy_iterator(),
+                                    map_functions=map_functions,
+                                    num_workers=50,
+                                    maxsize=[100,100*256,100*256],
+                                    )
+    if split=="train":
+        data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=1000, seed=42)
+        data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=20000, seed=43)
     
-    iterable = IterableDatasetWrapper(data) 
+    iterable = IterableDatasetWrapper(data_stream) 
     dloader= DataLoader(iterable,
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v)
@@ -257,6 +233,27 @@ def get_dataloader(data, batch_size):
     # dl_iter = repeat(dloader)
     return iter(dloader)
 
+    
+    # itr = dataset.as_numpy_iterator()
+    # itr.next()
+    # # itr = peekable(itr)
+    # # itr.peek()
+    # if split!="train":
+    #     itr = list(tqdm(itr,desc="Loading examples from dev"))
+    # for x in itr:
+    #     yield x
+# def get_dataset_iter(dataset, split, model_args, data_args):
+#     while True:
+#         # tokenizer = AutoTokenizer.from_pretrained(
+#         #     "bert-base-uncased",
+#         # )
+#         # for i,x in enumerate(tqdm(data_stream)):
+#         #     if (i%50000)==0:
+#         #         print(tokenizer.decode(x["query_input_ids"].squeeze() ))
+#         #         print(tokenizer.decode(x["pos_psgs_input_ids"].squeeze() ))
+#         #         print(tokenizer.decode(x["neg_psgs_input_ids"].squeeze() ))
+#         #     yield format_example(x)
+        
 import itertools
 
 

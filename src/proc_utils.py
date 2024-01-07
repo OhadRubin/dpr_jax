@@ -89,4 +89,4 @@ def run_mapping_pipeline(data_source, map_functions, num_workers=10,maxsize=None
             reader_process.join()
             for worker in workers:
                 worker.join()
-    return gen()
+    return gen
