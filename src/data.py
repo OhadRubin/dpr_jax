@@ -245,10 +245,11 @@ def get_dataloader(split, batch_size, model_args, data_args):
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v)
                             )
-    # dloader = peekable(dloader)
-    # dloader.peek()
+    dloader = iter(dloader)
+    dloader = peekable(dloader)
+    dloader.peek()
     # dl_iter = repeat(dloader)
-    return iter(dloader)
+    return dloader
 
     
     # itr = dataset.as_numpy_iterator()
