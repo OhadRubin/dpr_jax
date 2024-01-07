@@ -25,8 +25,7 @@ if "DEBUG" in os.environ:
 import jax
 print(jax.devices())
 
-import seqio
-from transformer import tasks
+
 from functools import partial
 
 import jax

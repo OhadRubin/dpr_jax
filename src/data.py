@@ -8,12 +8,11 @@ from tqdm import tqdm
 from multiprocessing import Pool
 from functools import partial
 
-from transformer import tasks
+
 
 
 
 from more_itertools import peekable
-import tensorflow as tf
 
 
 
@@ -195,6 +194,9 @@ def format_example(x, n_passages=2, top_elements=1):
 from more_itertools import peekable
 
 def load_from_seqio(name, split):
+    from transformer import tasks
+    import tensorflow as tf
+    import seqio
     suffix="seq1024" if name!="pg19" else "twi_seq1024"
     ds_name = f"{name}neox_retro_nn20_f20_entirebook_qa_{suffix}_16384_wtokens"
     task = seqio.get_mixture_or_task(ds_name)
