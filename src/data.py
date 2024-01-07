@@ -135,13 +135,18 @@ import random
 from torch.utils.data import DataLoader, IterableDataset
 import numpy as np
 class IterableDatasetWrapper(IterableDataset):
-    def __init__(self, dataset):
+    def __init__(self, dataset,split):
         super(IterableDatasetWrapper).__init__()
         self.dataset = dataset
+        self.split=split
     def __iter__(self):
         print(f"{self.dataset=}")
         print(f"{type(self.dataset)=}")
-        yield from iter(self.dataset)
+        itr = iter(self.dataset)
+        if self.split=="train":
+            itr =  shuffled_streaming_iterator(itr, chunk_size=1000, seed=42)
+            itr =  shuffled_streaming_iterator(itr, chunk_size=20000, seed=43)
+        yield from itr
 from einops import rearrange
 from flax.training.common_utils import shard
 def package(result):
@@ -210,25 +215,21 @@ def load_from_seqio(name, split):
 
 
 
-
+import time
 def get_dataloader(split, batch_size, model_args, data_args):
-    def my_itr():
-        def create_ds():
-            return load_from_seqio(name=data_args.dataset_name,split=split).as_numpy_iterator()
-        map_functions = [extract_dpr_examples, 
-                        create_tokenize_examples(model_args, data_args),
-                        lambda x: [format_example(x)]]
-        data_stream = run_mapping_pipeline(create_ds,
-                                        map_functions=map_functions,
-                                        num_workers=20,
-                                        maxsize=[100,100*256,100*256, 100*256],
-                                        )()
-        if split=="train":
-            data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=1000, seed=42)
-            data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=20000, seed=43)
-        yield from data_stream
-    
-    iterable = IterableDatasetWrapper(my_itr()) 
+
+    def create_ds():
+        return load_from_seqio(name=data_args.dataset_name,split=split).as_numpy_iterator()
+    map_functions = [extract_dpr_examples, 
+                    create_tokenize_examples(model_args, data_args),
+                    lambda x: [format_example(x)]]
+    data_stream = run_mapping_pipeline(create_ds,
+                                    map_functions=map_functions,
+                                    num_workers=20,
+                                    maxsize=[100,100*256,100*256, 100*256],
+                                    )
+    time.sleep(10)
+    iterable = IterableDatasetWrapper(data_stream,split=split) 
     dloader= DataLoader(iterable,
                             batch_size=batch_size,
                             collate_fn=lambda v: package(v)
