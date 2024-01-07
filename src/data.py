@@ -23,7 +23,7 @@ def extract_dpr_examples(element):
     chunks = targets.reshape([-1,64])
     examples_dict = dict()
     start_of_hard_neg = 5
-    n_hard_neg = 7
+    n_hard_neg = 1
     
     for chunk_id,candidate_idx,candidate_rank in zip(chunk_id_list ,candidate_idx_list, candidate_rank_list):
         if chunk_id not in examples_dict:
@@ -157,7 +157,7 @@ def package(result):
 
 
 
-def format_example(x, n_passages=8, top_elements=1):
+def format_example(x, n_passages=2, top_elements=1):
     neg_psgs_input_ids = x["neg_psgs_input_ids"]
     neg_psgs_attention_mask = x["neg_psgs_attention_mask"]
     if len(neg_psgs_input_ids)<(n_passages-1):
