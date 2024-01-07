@@ -14,39 +14,7 @@ from transformer import tasks
 
 from more_itertools import peekable
 import tensorflow as tf
-def load_from_seqio(name, split):
-    suffix="seq1024" if name!="pg19" else "twi_seq1024"
-    ds_name = f"{name}neox_retro_nn20_f20_entirebook_qa_{suffix}_16384_wtokens"
-    task = seqio.get_mixture_or_task(ds_name)
-    if split=="train":
-        dataset = task.get_dataset(split=split,
-                                    sequence_length=None,
-                                    shard_info=seqio.ShardInfo(jax.process_index(),jax.process_count()),
-                                    shuffle=False,
-                                    use_cached=False,
-                                    )
-    else:
-        dataset = task.get_dataset(split=split,
-                                    sequence_length=None,
-                                    shuffle=False
-                                    ).take(100)
-        #autotune = tf.data.experimental.AUTOTUNE
-    return dataset.prefetch(tf.data.experimental.AUTOTUNE)
-    # itr = dataset.as_numpy_iterator()
-    # itr.next()
-    # # itr = peekable(itr)
-    # # itr.peek()
-    # if split!="train":
-    #     itr = list(tqdm(itr,desc="Loading examples from dev"))
-    # for x in itr:
-    #     yield x
 
-def get_dataset(split, data_args):
-    dataset = load_from_seqio(name=data_args.dataset_name,split=split)
-    return dataset
-    dataset = peekable(dataset)
-    dataset.peek()
-    return dataset
 
 
 def extract_dpr_examples(element):
@@ -219,22 +187,40 @@ def format_example(x, n_passages=2, top_elements=1):
 
 from more_itertools import peekable
 
-def get_dataloader(data, batch_size):
-    
-    iterable = IterableDatasetWrapper(data) 
-    dloader= DataLoader(iterable,
-                            batch_size=batch_size,
-                            collate_fn=lambda v: package(v)
-                            )
-    dloader = peekable(dloader)
-    dloader.peek()
-    # dl_iter = repeat(dloader)
-    return iter(dloader)
+def load_from_seqio(name, split):
+    suffix="seq1024" if name!="pg19" else "twi_seq1024"
+    ds_name = f"{name}neox_retro_nn20_f20_entirebook_qa_{suffix}_16384_wtokens"
+    task = seqio.get_mixture_or_task(ds_name)
+    if split=="train":
+        dataset = task.get_dataset(split=split,
+                                    sequence_length=None,
+                                    shard_info=seqio.ShardInfo(jax.process_index(),jax.process_count()),
+                                    shuffle=False,
+                                    use_cached=False,
+                                    )
+    else:
+        dataset = task.get_dataset(split=split,
+                                    sequence_length=None,
+                                    shuffle=False
+                                    ).take(100)
+        #autotune = tf.data.experimental.AUTOTUNE
+    return dataset.prefetch(tf.data.experimental.AUTOTUNE)
+    # itr = dataset.as_numpy_iterator()
+    # itr.next()
+    # # itr = peekable(itr)
+    # # itr.peek()
+    # if split!="train":
+    #     itr = list(tqdm(itr,desc="Loading examples from dev"))
+    # for x in itr:
+    #     yield x
 
-import itertools
-
-
-
+def get_dataset(split, data_args):
+    dataset = load_from_seqio(name=data_args.dataset_name,split=split)
+    print("after load_from_seqio")
+    return dataset
+    dataset = peekable(dataset)
+    dataset.peek()
+    return dataset
 
 def get_dataset_iter(dataset, split, model_args, data_args):
     while True:
@@ -258,6 +244,23 @@ def get_dataset_iter(dataset, split, model_args, data_args):
                 print(tokenizer.decode(x["neg_psgs_input_ids"].squeeze() ))
             yield format_example(x)
         
+
+def get_dataloader(data, batch_size):
+    
+    iterable = IterableDatasetWrapper(data) 
+    dloader= DataLoader(iterable,
+                            batch_size=batch_size,
+                            collate_fn=lambda v: package(v)
+                            )
+    dloader = peekable(dloader)
+    dloader.peek()
+    # dl_iter = repeat(dloader)
+    return iter(dloader)
+
+import itertools
+
+
+
 
 
 import fire
