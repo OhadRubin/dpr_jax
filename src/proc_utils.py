@@ -77,18 +77,18 @@ def run_mapping_pipeline(data_source, map_functions, num_workers=10,maxsize=None
         result = queues[-1].get()
         yield result
         print("yielded")
-    try:
+    # try:
                 
-    except KeyboardInterrupt:
-        for worker in workers:
-            worker.terminate()
-        reader_process.terminate()
-        raise
-    finally:
-        for queue in queues:
-            queue.close()
-            queue.join_thread()
-        reader_process.join()
-        for worker in workers:
-            worker.join()
+    # except KeyboardInterrupt:
+    #     for worker in workers:
+    #         worker.terminate()
+    #     reader_process.terminate()
+    #     raise
+    # finally:
+    #     for queue in queues:
+    #         queue.close()
+    #         queue.join_thread()
+    #     reader_process.join()
+    #     for worker in workers:
+    #         worker.join()
     # return gen
