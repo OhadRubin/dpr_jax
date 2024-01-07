@@ -202,7 +202,7 @@ def load_from_seqio(name, split):
                                     sequence_length=None,
                                     shuffle=False
                                     ).take(100)
-    itr = dataset.prefetch(tf.data.experimental.AUTOTUNE).repeat().as_numpy_iterator()
+    itr = dataset.repeat().prefetch(tf.data.experimental.AUTOTUNE).as_numpy_iterator()
     # if split=="validation":
         # itr = list(tqdm(itr,desc="Loading examples from dev"))
     
@@ -220,8 +220,8 @@ class IterableDatasetWrapper(IterableDataset):
             # itr = itertools.cycle(itr)
             yield from iter(itr)
         else:
-            itr  =shuffled_streaming_iterator(iter(itr), chunk_size=5000, seed=0)
-            itr  =shuffled_streaming_iterator(iter(itr), chunk_size=20000, seed=1)
+            # itr  =shuffled_streaming_iterator(iter(itr), chunk_size=5000, seed=0)
+            itr  =shuffled_streaming_iterator(iter(itr), chunk_size=200000, seed=1)
             yield from iter(itr)
                 
 
