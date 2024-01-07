@@ -192,8 +192,9 @@ def get_dataloader(data, batch_size):
 import itertools
 
 
-def load_from_seqio(name, split):    
-    ds_name = f"{name}neox_retro_nn20_f20_entirebook_qa_seq1024_16384_wtokens"
+def load_from_seqio(name, split):
+    suffix="seq1024" if name!="pg19" else "twi_seq1024"
+    ds_name = f"{name}neox_retro_nn20_f20_entirebook_qa_{suffix}_16384_wtokens"
     task = seqio.get_mixture_or_task(ds_name)
     if split=="train":
         dataset = task.get_dataset(split=split,
