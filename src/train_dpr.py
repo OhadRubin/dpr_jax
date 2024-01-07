@@ -161,7 +161,7 @@ class TevatronTrainingArguments:
     
     warmup_steps: int = field(default=2000)
     seed: int = 42
-    num_train_steps: float = field(default=2, metadata={"help": "Total number of training steps to perform."})
+    num_train_steps: float = field(default=50000, metadata={"help": "Total number of training steps to perform."})
     learning_rate: float = field(default=4e-5, metadata={"help": "The initial learning rate for AdamW."})
     weight_decay: float = field(default=0.0, metadata={"help": "Weight decay for AdamW if we apply some."})
     adam_beta1: float = field(default=0.9, metadata={"help": "Beta1 for AdamW optimizer"})
