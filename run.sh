@@ -1,5 +1,5 @@
 
-export PYTHONPATH=~/meliad2:$PYTHONPATH
+
 export BUCKET=meliad_eu2
 export LOGURU_LEVEL=INFO
 export JAX_LOG_COMPILES=1

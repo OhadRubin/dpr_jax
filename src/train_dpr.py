@@ -93,6 +93,13 @@ import numpy as np
 import time
 import wandb
 
+from fsspec.generic import rsync
+import shutil
+
+def save_to_cloud(model, params, remote_model_path, local_model_path = "/tmp/local_model"):
+    model.save_pretrained(local_model_path, params=params)
+    rsync(local_model_path, remote_model_path)
+    shutil.rmtree(local_model_path)
 
 @dataclass
 class DataArguments:
@@ -152,6 +159,7 @@ class TevatronTrainingArguments:
     output_dir: str = field(
         metadata={"help": "The output directory where the model predictions and checkpoints will be written."},
     )
+    
     warmup_steps: int = field(default=2000)
     seed: int = 42
     num_train_steps: float = field(default=50000, metadata={"help": "Total number of training steps to perform."})
@@ -175,6 +183,11 @@ class TevatronTrainingArguments:
     )
     eval_steps: float = field(default=1000)
     n_eval_steps: int = field(default=100)
+    
+    def __post_init__(self):
+        # "The output directory where the model predictions and checkpoints will be written."
+        self.output_dir
+        
     
 
 Array = Any
@@ -377,11 +390,11 @@ def main():
     params = jax_utils.unreplicate(state.params)
     if is_main:
         if model_args.untie_encoder:
-            os.makedirs(training_args.output_dir, exist_ok=True)
-            model.save_pretrained(os.path.join(training_args.output_dir, 'query_encoder'), params=params.q_params)
-            model.save_pretrained(os.path.join(training_args.output_dir, 'passage_encoder'), params=params.p_params)
+
+            save_to_cloud(model,params=params.q_params, remote_model_path=f'{training_args.output_dir}/query_encoder')
+            save_to_cloud(model,params=params.p_params, remote_model_path=f'{training_args.output_dir}/passage_encoder')
         else:
-            model.save_pretrained(training_args.output_dir, params=params.p_params)
+            save_to_cloud(model,params=params.p_params, remote_model_path=training_args.output_dir)
 
 
 if __name__ == "__main__":
