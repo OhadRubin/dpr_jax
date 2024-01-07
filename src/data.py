@@ -197,6 +197,7 @@ def load_from_seqio(name, split):
     from transformer import tasks
     import tensorflow as tf
     import seqio
+    print(f"inside load_from_seqio with {name=} and {split=}")
     suffix="seq1024" if name!="pg19" else "twi_seq1024"
     ds_name = f"{name}neox_retro_nn20_f20_entirebook_qa_{suffix}_16384_wtokens"
     task = seqio.get_mixture_or_task(ds_name)
