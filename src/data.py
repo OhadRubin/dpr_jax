@@ -222,7 +222,7 @@ def get_dataloader(split, batch_size, model_args, data_args):
                                         map_functions=map_functions,
                                         num_workers=20,
                                         maxsize=[100,100*256,100*256, 100*256],
-                                        )
+                                        )()
         if split=="train":
             data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=1000, seed=42)
             data_stream =  shuffled_streaming_iterator(data_stream, chunk_size=20000, seed=43)
