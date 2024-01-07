@@ -215,13 +215,13 @@ class IterableDatasetWrapper(IterableDataset):
         self.dataset = dataset
         self.split=split
     def __iter__(self):
-        while True:
-            if self.split!="train":
-                yield from iter(self.dataset)
-            else:
-                itr  =shuffled_streaming_iterator(iter(self.dataset), chunk_size=5000, seed=0)
-                itr  =shuffled_streaming_iterator(iter(itr), chunk_size=20000, seed=1)
-                yield from iter(itr)
+        itr = itertools.cycle(iter(self.dataset))
+        if self.split!="train":
+            yield from iter(itr)
+        else:
+            itr  =shuffled_streaming_iterator(iter(itr), chunk_size=5000, seed=0)
+            itr  =shuffled_streaming_iterator(iter(itr), chunk_size=20000, seed=1)
+            yield from iter(itr)
                 
 
 def get_dataloader(split, batch_size, model_args, data_args):
