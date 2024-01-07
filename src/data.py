@@ -234,7 +234,7 @@ def get_dataloader(split, batch_size, model_args, data_args):
     data_stream = run_mapping_pipeline(create_ds,
                                     map_functions=map_functions,
                                     num_workers=20,
-                                    maxsize=[100,100*256,100*256, 100*256],
+                                    maxsize=[1000,1000*256,1000*256, 1000*256],
                                     )
     print("sleeping")
     time.sleep(10)

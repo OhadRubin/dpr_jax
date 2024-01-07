@@ -21,9 +21,8 @@ def apply_delayed(obj):
 
 def data_reader(delayed_source, output_queue, done_output_cnt):
     # Read data in chunks
-    print('data_reader')
+
     itr = delayed_source()
-    print(itr)
     for i,data_chunk in enumerate(itr):
         if i==0:
             print(data_chunk)
