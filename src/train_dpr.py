@@ -105,8 +105,8 @@ def load_from_seqio(name, split):
         dataset = task.get_dataset(split=split,
                                     sequence_length=None,
                                     shard_info=seqio.ShardInfo(jax.process_index(),jax.process_count()),
-                                    seed=0,
-                                    shuffle_buffer_size=10000,
+                                    shuffle=False
+                                    use_cached=False,
                                     )
     else:
         dataset = task.get_dataset(split=split,
