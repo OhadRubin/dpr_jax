@@ -214,7 +214,8 @@ def load_from_seqio(name, split):
                                     shuffle=False
                                     ).take(100)
     print("before fetching")
-    return dataset.prefetch(tf.data.experimental.AUTOTUNE)
+    itr = dataset.prefetch(tf.data.experimental.AUTOTUNE).as_numpy_iterator()
+    return itr
 
 
 
@@ -223,7 +224,7 @@ import time
 def get_dataloader(split, batch_size, model_args, data_args):
 
     def create_ds():
-        return load_from_seqio(name=data_args.dataset_name,split=split).as_numpy_iterator()
+        return load_from_seqio(name=data_args.dataset_name,split=split)
     map_functions = [extract_dpr_examples, 
                     create_tokenize_examples(model_args, data_args),
                     lambda x: [format_example(x)]]
