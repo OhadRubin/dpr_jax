@@ -142,7 +142,7 @@ class IterableDatasetWrapper(IterableDataset):
     def __iter__(self):
         print(f"{self.dataset=}")
         print(f"{type(self.dataset)=}")
-        itr = iter(self.dataset)
+        itr = iter(self.dataset())
         if self.split=="train":
             itr =  shuffled_streaming_iterator(itr, chunk_size=1000, seed=42)
             itr =  shuffled_streaming_iterator(itr, chunk_size=20000, seed=43)
