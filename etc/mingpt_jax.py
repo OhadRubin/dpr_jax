@@ -373,15 +373,15 @@ class Trainer:
         # device to train on
         C.device = 'auto'
         # dataloder parameters
-        C.num_workers = 1
         C.seed=42
         # optimizer parameters
         C.max_iters = None
-        C.batch_size = 32
+        C.batch_size = 8
         C.learning_rate = 3e-4
         C.betas = (0.9, 0.95)
         C.weight_decay = 0.1 # only applied on matmul weights
         C.grad_norm_clip = 1.0
+        C.warmup_steps = 1000
         return C
 
     def __init__(self, config, model, train_dataset):
@@ -431,17 +431,27 @@ class Trainer:
             eval_step,
             "device"
         )
+        
+        learning_rate_schedule = optax.warmup_cosine_decay_schedule(
+                    init_value=0,
+                    peak_value=config.learning_rate,
+                    warmup_steps=config.warmup_steps,
+                    decay_steps=config.max_iters-config.lr_warmup_steps,
+                    end_value=config.learning_rate*0.1,
+                )
 
-        adamw = optax.adamw(
-            learning_rate=config.learning_rate,
+        optimizer = optax.chain(
+            optax.clip_by_global_norm(config.grad_norm_clip),
+            optax.adamw(
+            learning_rate=learning_rate_schedule,
             b1=config.betas[0],
             b2=config.betas[1],
             weight_decay=config.weight_decay,
-        )
+        ))
         train_loader = DataLoader(
             self.train_dataset,
-            sampler=torch.utils.data.RandomSampler(self.train_dataset),
-            shuffle=False,
+            # sampler=torch.utils.data.RandomSampler(self.train_dataset),
+            # shuffle=False,
             batch_size=config.batch_size,
             collate_fn=collate_fn,
         )
@@ -454,13 +464,12 @@ class Trainer:
         dropout_rngs = jax.random.split(rng, jax.local_device_count())
         params = self.init_weights(rng, batch[0].shape[1:])
         print(params.keys())
-        state = TrainState.create(apply_fn=model.apply, params=params["params"], tx=adamw)
+        state = TrainState.create(apply_fn=model.apply, params=params["params"], tx=optimizer)
         
         state = jax_utils.replicate(state)
 
         self.iter_num = 0
         self.iter_time = time.time()
-        
         pbar = tqdm()
         loss_metric = RollingAverage.create(size=20)
 
@@ -476,7 +485,7 @@ class Trainer:
             loss = jax.device_get(loss)
 
 
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
+            
             
             curr_loss,loss_metric = loss_metric.update(loss.mean().item())
             
@@ -500,7 +509,9 @@ model_config = setup_config(model_config)
 model = GPT(model_config)
 
 from datasets import load_dataset
-dataset = load_dataset("parquet",data_files={"train":"/home/ohadr/dpr_jax/etc/c4-ice-in-pita-000-of-128.parquet"})
+dataset = load_dataset("parquet",
+                       data_files={"train":"/home/ohadr/dpr_jax/etc/c4-ice-in-pita-000-of-128.parquet"},
+                       streaming=True)
 
 
 import more_itertools
@@ -510,31 +521,45 @@ def shift_right_by_one(arr,fill_val=2):
     shifted[0] = fill_val
     return shifted
 
+
+
+class IterableDatasetWrapper(IterableDataset):
+    def __init__(self, dataset):
+        super(IterableDatasetWrapper).__init__()
+        self.dataset = dataset
+    def __iter__(self):
+        while True:
+            for x in iter(self.dataset):
+                yield x
+            
 def calc_targets(batch):
     new_targets = []
     new_input_tokens = []
     x_list = batch["input_ids"]
     for x in x_list:
         for y in more_itertools.chunked(x,1024):
-            new_targets.append(np.array(y))
+            y = np.array(y)
+            new_targets.append(y)
             new_input_tokens.append(shift_right_by_one(y))
 
     return {"targets":new_targets,"input_tokens":new_input_tokens}
 
-train_dataset = dataset["train"].select(range(100))
-train_dataset = train_dataset.map(calc_targets,batched=True, batch_size=10,num_proc=10,remove_columns=train_dataset.column_names)
-train_dataset.set_format("numpy")
+# train_dataset = dataset["train"].select(range(100))
+train_dataset = dataset["train"]
+train_dataset = train_dataset.map(calc_targets,batched=True, batch_size=10,remove_columns=train_dataset.column_names)
 
-train_dataset = list(train_dataset)
+train_dataset = IterableDatasetWrapper(train_dataset)
+
+# train_dataset = list(train_dataset)
 
 
 # %%
 
 train_config = Trainer.get_default_config()
 train_config.learning_rate = 5e-4 # many possible options, see the file
-train_config.max_iters = 1000
+train_config.max_iters = 10000
 train_config.weight_decay = 0
-train_config.batch_size = 32
+train_config.batch_size = 8
 trainer = Trainer(train_config, model, train_dataset)
 trainer.run()
 
