@@ -325,7 +325,6 @@ class RollingAverage(struct.PyTreeNode):
   def create(cls, *, size):
     return cls(size=0, last_element=0, mat=np.zeros(size,dtype=np.float32))
 
-# %%
 """
 Simple training loop; Boilerplate that could apply to any arbitrary neural network,
 so nothing in this file really has anything to do with GPT specifically.
@@ -428,10 +427,10 @@ class Trainer:
             train_step,
             "device"
         )
-        # p_eval_step = jax.pmap(
-        #     eval_step,
-        #     "device"
-        # )
+        p_eval_step = jax.pmap(
+            eval_step,
+            "device"
+        )
 
         adamw = optax.adamw(
             learning_rate=config.learning_rate,
@@ -535,7 +534,7 @@ train_config = Trainer.get_default_config()
 train_config.learning_rate = 5e-4 # many possible options, see the file
 train_config.max_iters = 1000
 train_config.weight_decay = 0
-train_config.batch_size = 8
+train_config.batch_size = 32
 trainer = Trainer(train_config, model, train_dataset)
 trainer.run()
 
