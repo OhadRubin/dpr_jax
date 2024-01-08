@@ -218,8 +218,8 @@ def retriever_eval_step(state, queries, passages, dropout_rng, axis='device'):
     q_dropout_rng, p_dropout_rng, new_dropout_rng = jax.random.split(dropout_rng, 3)
 
     def compute_loss(params):
-        q_reps = state.apply_fn(**queries, params=params.q_params, dropout_rng=q_dropout_rng, train=True)[0][:, 0, :]
-        p_reps = state.apply_fn(**passages, params=params.p_params, dropout_rng=p_dropout_rng, train=True)[0][:, 0, :]
+        q_reps = state.apply_fn(**queries, params=params.q_params, dropout_rng=q_dropout_rng, train=False)[0][:, 0, :]
+        p_reps = state.apply_fn(**passages, params=params.p_params, dropout_rng=p_dropout_rng, train=False)[0][:, 0, :]
         scores, labels = p_calc_scores(q_reps, p_reps, axis=axis)
         loss, metrics = calc_metrics(scores, labels)
         return loss, metrics
