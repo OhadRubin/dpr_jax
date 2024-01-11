@@ -305,13 +305,16 @@ class RollingAverage(struct.PyTreeNode):
   size: int
   last_element: int
   mat: np.ndarray
+  discount: float = 0.99
 
   def update(self, new_value):
-    self.mat[self.last_element] = new_value
     mat=self.mat
+    # mat = mat * self.discount
+    mat[self.last_element] = new_value
     last_element = (self.last_element+1) % mat.shape[0]
     size = np.where(self.size!=mat.shape[0],self.size+1,self.size)
-    curr_value = mat.sum()/size
+    curr_value = mat.sum()/ size
+    # curr_value = mat.sum()/size
 
     return curr_value,self.replace(size=size,
                         last_element=last_element,
@@ -445,6 +448,7 @@ class Trainer:
             self.train_dataset,
             batch_size=config.batch_size,
             collate_fn=collate_fn,
+            # num_workers=1,
         )
         with Timer() as timer:
             data_iter = iter(train_loader)
@@ -463,7 +467,7 @@ class Trainer:
         self.iter_num = 0
         self.iter_time = time.time()
         pbar = tqdm()
-        loss_metric = RollingAverage.create(size=20)
+        loss_metric = RollingAverage.create(size=200)
 
         while True:
             pbar.update(1)
@@ -542,36 +546,21 @@ class IterableDatasetWrapper(IterableDataset):
             for x in iter(self.dataset):
                 yield x
 
-
+import more_itertools
 def flatten_input_ids(batch):
     out_list = []
     for y in more_itertools.chunked(batch["input_ids"],1024):
         y = np.array(y)
         out_list.append({"targets":y,"input_tokens":shift_right_by_one(y)})
     return out_list
-from joblib import Parallel, delayed
-import more_itertools
 
-from prefetch_generator import BackgroundGenerator, background
-
-@background(max_prefetch=500000)
 def batched_parallel(dataset):
-    # dataset  = BackgroundGenerator(,max_prefetch=100)
     dataset = iter(dataset)
-    with Parallel(n_jobs=100,return_as="generator") as parallel:
-        # for batch in more_itertools.chunked(dataset,10):
-        yield from more_itertools.flatten(parallel(delayed(flatten_input_ids)(x) for x in tqdm(dataset,desc="dataset")))
+    for x in dataset:
+        yield from flatten_input_ids(x)
 
-# pip install prefetch_generator
 
-def go():
-    model_config = GPT.get_default_config()
-    model_config.model_type = 'gpt2'
-    model_config.vocab_size = 50257 # openai's model vocabulary
-    model_config.block_size = 1024  # openai's model block_size (i.e. input context length)
-    model_config = setup_config(model_config)
-    model = GPT(model_config)
-
+def get_dataset():
 
     dataset = load_dataset("parquet",
                         data_files={"train":"/home/ohadr/dpr_jax/etc/c4-ice-in-pita-000-of-128.parquet"},
@@ -582,6 +571,18 @@ def go():
     train_dataset = batched_parallel(train_dataset)
     train_dataset = BufferShuffledExamplesIterable(tqdm(train_dataset,desc="prefetching"), buffer_size=10000, generator=np.random.default_rng(42))
     train_dataset = IterableDatasetWrapper(train_dataset)
+    return train_dataset
+
+
+def go():
+    model_config = GPT.get_default_config()
+    model_config.model_type = 'gpt2'
+    model_config.vocab_size = 50257 # openai's model vocabulary
+    model_config.block_size = 1024  # openai's model block_size (i.e. input context length)
+    model_config = setup_config(model_config)
+    model = GPT(model_config)
+
+    train_dataset = get_dataset()
 
     train_config = Trainer.get_default_config()
     train_config.learning_rate = 5e-4 # many possible options, see the file
