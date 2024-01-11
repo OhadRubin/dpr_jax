@@ -6,12 +6,12 @@ os.environ["JAX_LOG_COMPILES"] = "1"
 import sys
 import json
 import random
+import jax
 from ast import literal_eval
-
+import jax.numpy as jnp
 import numpy as np
 import time
 from collections import defaultdict
-import torch
 from torch.utils.data.dataloader import DataLoader, IterableDataset
 from tqdm.auto import tqdm
 import optax
@@ -19,17 +19,10 @@ from flax.training.train_state import TrainState
 from jax.nn import softmax
 import einops
 import math
-import jax
-import jax.numpy as jnp
 from jax.numpy import where
 import math
-import einops
-import jax
-import jax.numpy as jnp
-import numpy as np
-import jax.numpy as jnp
-import dataclasses
-import numpy as np
+
+
 from flax import struct
 
 class CfgNode:
@@ -118,14 +111,8 @@ class NewGELU(nn.Module):
 
 
 import flax
-def init_Linear(in_features, out_features, bias=False, std=0.02):
-    kwargs = dict(
-                features=out_features,
-                use_bias=bias,
-                dtype=jnp.float32,
-            )
-    kwargs["kernel_init"] = jax.nn.initializers.normal(std)
-    return flax.linen.Dense(**kwargs)
+def init_Linear(out_features, bias=True, std=0.02):
+    return flax.linen.Dense(features=out_features, use_bias=bias, dtype=jnp.float32, kernel_init=jax.nn.initializers.normal(std))
 
 
 
@@ -149,9 +136,9 @@ class CausalSelfAttention(nn.Module):
         config=self.config
         assert config.n_embd % config.n_head == 0
         # key, query, value projections for all heads, but in a batch
-        self.c_attn = init_Linear(config.n_embd, 3 * config.n_embd) #init with std=0.02
+        self.c_attn = init_Linear(3 * config.n_embd) #init with std=0.02
         # output projection
-        self.c_proj = init_Linear(config.n_embd, config.n_embd, std=0.02/math.sqrt(2 * config.n_layer))
+        self.c_proj = init_Linear(config.n_embd, std=0.02/math.sqrt(2 * config.n_layer))
         # regularization
         self.attn_dropout = nn.Dropout(config.attn_pdrop)
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
@@ -200,8 +187,8 @@ class MLP(nn.Module):
 
     def setup(self):
         config=self.config
-        self.c_fc = init_Linear(config.n_embd, config.n_embd * 4)
-        self.c_proj = init_Linear(config.n_embd * 4, config.n_embd, std=0.02/math.sqrt(2 * config.n_layer)) 
+        self.c_fc = init_Linear(config.n_embd * 4)
+        self.c_proj = init_Linear(config.n_embd, std=0.02/math.sqrt(2 * config.n_layer)) 
         self.act = NewGELU()
         self.dropout = nn.Dropout(config.resid_pdrop)
 
@@ -223,7 +210,16 @@ class Block(nn.Module):
         x = x + self.attn(self.ln_1(x), deterministic=deterministic)
         x = x + self.mlpf(self.ln_2(x), deterministic=deterministic)
         return x
+class Timer:
+    def __enter__(self):
+        self.start = time.time()
+        self.interval = None
+        return self
 
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.end = time.time()
+        self.interval = self.end - self.start
+        print(f"Elapsed time: {self.interval} seconds")
 
 
 
@@ -286,7 +282,7 @@ class GPT(nn.Module):
         self.h = [Block(config) for _ in range(config.n_layer)]
         self.ln_f = nn.LayerNorm(config.n_embd)
         
-        self.lm_head = init_Linear(config.n_embd, config.vocab_size, bias=False) #init with std=0.02
+        self.lm_head = init_Linear(config.vocab_size, bias=False) #init with std=0.02
 
 
     def __call__(self, idx, deterministic: bool = True):
@@ -436,7 +432,7 @@ class Trainer:
                     init_value=0,
                     peak_value=config.learning_rate,
                     warmup_steps=config.warmup_steps,
-                    decay_steps=config.max_iters-config.lr_warmup_steps,
+                    decay_steps=config.max_iters-config.warmup_steps,
                     end_value=config.learning_rate*0.1,
                 )
 
@@ -450,13 +446,12 @@ class Trainer:
         ))
         train_loader = DataLoader(
             self.train_dataset,
-            # sampler=torch.utils.data.RandomSampler(self.train_dataset),
-            # shuffle=False,
             batch_size=config.batch_size,
             collate_fn=collate_fn,
         )
-        data_iter = iter(train_loader)
-        batch = next(data_iter)
+        with Timer() as timer:
+            data_iter = iter(train_loader)
+            batch = next(data_iter)
         
         
         
@@ -500,7 +495,6 @@ class Trainer:
             if config.max_iters is not None and self.iter_num >= config.max_iters:
                 break
 
-# %%
 model_config = GPT.get_default_config()
 model_config.model_type = 'gpt2'
 model_config.vocab_size = 50257 # openai's model vocabulary
@@ -544,16 +538,14 @@ def calc_targets(batch):
 
     return {"targets":new_targets,"input_tokens":new_input_tokens}
 
-# train_dataset = dataset["train"].select(range(100))
 train_dataset = dataset["train"]
-train_dataset = train_dataset.map(calc_targets,batched=True, batch_size=10,remove_columns=train_dataset.column_names)
+train_dataset = train_dataset.map(calc_targets,
+                                  batched=True,
+                                  batch_size=2,
+                                  remove_columns=train_dataset.column_names)
+train_dataset = train_dataset.shuffle(seed=42,buffer_size=100000)
 
 train_dataset = IterableDatasetWrapper(train_dataset)
-
-# train_dataset = list(train_dataset)
-
-
-# %%
 
 train_config = Trainer.get_default_config()
 train_config.learning_rate = 5e-4 # many possible options, see the file
@@ -562,8 +554,3 @@ train_config.weight_decay = 0
 train_config.batch_size = 8
 trainer = Trainer(train_config, model, train_dataset)
 trainer.run()
-
-# %%
-
-
-
