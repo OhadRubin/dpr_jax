@@ -321,10 +321,7 @@ class RollingAverage(struct.PyTreeNode):
   def create(cls, *, size):
     return cls(size=0, last_element=0, mat=np.zeros(size,dtype=np.float32))
 
-"""
-Simple training loop; Boilerplate that could apply to any arbitrary neural network,
-so nothing in this file really has anything to do with GPT specifically.
-"""
+
 
 def train_step(state, input_idxs, targets, dropout_rng, axis='device'):
     dropout_rng, new_dropout_rng = jax.random.split(dropout_rng, 2)
@@ -479,9 +476,6 @@ class Trainer:
             loss, state, dropout_rngs = p_train_step(state, *batch, dropout_rngs)
             loss = jax.device_get(loss)
 
-
-            
-            
             curr_loss,loss_metric = loss_metric.update(loss.mean().item())
             
             pbar.set_description(f"Curr loss: {curr_loss}")
@@ -494,18 +488,8 @@ class Trainer:
             # termination conditions
             if config.max_iters is not None and self.iter_num >= config.max_iters:
                 break
-
-model_config = GPT.get_default_config()
-model_config.model_type = 'gpt2'
-model_config.vocab_size = 50257 # openai's model vocabulary
-model_config.block_size = 1024  # openai's model block_size (i.e. input context length)
-model_config = setup_config(model_config)
-model = GPT(model_config)
-
 from datasets import load_dataset
-dataset = load_dataset("parquet",
-                       data_files={"train":"/home/ohadr/dpr_jax/etc/c4-ice-in-pita-000-of-128.parquet"},
-                       streaming=True)
+
 
 
 import more_itertools
@@ -517,6 +501,38 @@ def shift_right_by_one(arr,fill_val=2):
 
 
 
+import numpy as np
+from copy import deepcopy
+class BufferShuffledExamplesIterable:
+    def __init__(self, ex_iterable, buffer_size: int, generator: np.random.Generator):
+        super().__init__()
+        self.ex_iterable = ex_iterable
+        self.buffer_size = buffer_size
+        self.generator = generator
+        # TODO(QL): implement iter_arrow
+
+    @staticmethod
+    def _iter_random_indices(rng: np.random.Generator, buffer_size: int, random_batch_size=1000):
+        while True:
+            yield from (int(i) for i in rng.integers(0, buffer_size, size=random_batch_size))
+
+    def __iter__(self):
+        buffer_size = self.buffer_size
+        rng = deepcopy(self.generator)
+        indices_iterator = self._iter_random_indices(rng, buffer_size)
+        # this is the shuffle buffer that we keep in memory
+        mem_buffer = []
+        for x in self.ex_iterable:
+            if len(mem_buffer) == buffer_size:  # if the buffer is full, pick and example from it
+                i = next(indices_iterator)
+                yield mem_buffer[i]
+                mem_buffer[i] = x  # replace the picked example by a new one
+            else:  # otherwise, keep filling the buffer
+                mem_buffer.append(x)
+        # when we run out of examples, we shuffle the remaining examples in the buffer and yield them
+        rng.shuffle(mem_buffer)
+        yield from mem_buffer
+        
 class IterableDatasetWrapper(IterableDataset):
     def __init__(self, dataset):
         super(IterableDatasetWrapper).__init__()
@@ -525,32 +541,55 @@ class IterableDatasetWrapper(IterableDataset):
         while True:
             for x in iter(self.dataset):
                 yield x
-            
-def calc_targets(batch):
-    new_targets = []
-    new_input_tokens = []
-    x_list = batch["input_ids"]
-    for x in x_list:
-        for y in more_itertools.chunked(x,1024):
-            y = np.array(y)
-            new_targets.append(y)
-            new_input_tokens.append(shift_right_by_one(y))
 
-    return {"targets":new_targets,"input_tokens":new_input_tokens}
 
-train_dataset = dataset["train"]
-train_dataset = train_dataset.map(calc_targets,
-                                  batched=True,
-                                  batch_size=2,
-                                  remove_columns=train_dataset.column_names)
-train_dataset = train_dataset.shuffle(seed=42,buffer_size=100000)
+def flatten_input_ids(batch):
+    out_list = []
+    for y in more_itertools.chunked(batch["input_ids"],1024):
+        y = np.array(y)
+        out_list.append({"targets":y,"input_tokens":shift_right_by_one(y)})
+    return out_list
+from joblib import Parallel, delayed
+import more_itertools
 
-train_dataset = IterableDatasetWrapper(train_dataset)
+from prefetch_generator import BackgroundGenerator, background
 
-train_config = Trainer.get_default_config()
-train_config.learning_rate = 5e-4 # many possible options, see the file
-train_config.max_iters = 10000
-train_config.weight_decay = 0
-train_config.batch_size = 8
-trainer = Trainer(train_config, model, train_dataset)
-trainer.run()
+@background(max_prefetch=500000)
+def batched_parallel(dataset):
+    # dataset  = BackgroundGenerator(,max_prefetch=100)
+    dataset = iter(dataset)
+    with Parallel(n_jobs=100,return_as="generator") as parallel:
+        # for batch in more_itertools.chunked(dataset,10):
+        yield from more_itertools.flatten(parallel(delayed(flatten_input_ids)(x) for x in tqdm(dataset,desc="dataset")))
+
+# pip install prefetch_generator
+
+def go():
+    model_config = GPT.get_default_config()
+    model_config.model_type = 'gpt2'
+    model_config.vocab_size = 50257 # openai's model vocabulary
+    model_config.block_size = 1024  # openai's model block_size (i.e. input context length)
+    model_config = setup_config(model_config)
+    model = GPT(model_config)
+
+
+    dataset = load_dataset("parquet",
+                        data_files={"train":"/home/ohadr/dpr_jax/etc/c4-ice-in-pita-000-of-128.parquet"},
+                           streaming=True
+                        )
+    print(dataset)
+    train_dataset = iter(dataset["train"])
+    train_dataset = batched_parallel(train_dataset)
+    train_dataset = BufferShuffledExamplesIterable(tqdm(train_dataset,desc="prefetching"), buffer_size=10000, generator=np.random.default_rng(42))
+    train_dataset = IterableDatasetWrapper(train_dataset)
+
+    train_config = Trainer.get_default_config()
+    train_config.learning_rate = 5e-4 # many possible options, see the file
+    train_config.max_iters = 100_000
+    train_config.weight_decay = 0
+    train_config.batch_size = 8
+    trainer = Trainer(train_config, model, train_dataset)
+    trainer.run()
+    
+if __name__ == "__main__":
+    go()
