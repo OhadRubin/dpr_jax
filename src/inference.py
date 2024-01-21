@@ -19,7 +19,7 @@ from transformers import AutoTokenizer
 from torch.utils.data import DataLoader
 
 
-dataset = load_from_seqio("codeparrot","validation",repeat=False,limit=None)
+
 
 
 
@@ -70,21 +70,42 @@ def package(result):
     return query,psgs
 
 import numpy as np
+import jax
+from flax.jax_utils import pad_shard_unpad
 
-def main():
+def main(per_device_batch_size=8):
     encode_text = create_encode_text()
+    dataset = load_from_seqio("codeparrot","validation",repeat=False,limit=None)
+    element = dataset.next()
+    ds = process_element(element)
     ds = ds.map(encode_text, batched=True,remove_columns=ds.column_names)
     dloader= DataLoader(ds,
-                        batch_size=10,
+                        batch_size=per_device_batch_size*jax.local_device_count(),
                         collate_fn=lambda v: package(v)
                         )
+    p_model = FlaxAutoModel.from_pretrained("/home/ohadr/dpr_jax/v7_n7_dscodeparrot_b20.95_wd0.01_steps100000/passage_encoder")
+    q_model = FlaxAutoModel.from_pretrained("/home/ohadr/dpr_jax/v7_n7_dscodeparrot_b20.95_wd0.01_steps100000/query_encoder")
     batch = next(iter(dloader))
     q_batch,p_batch = batch
-    model = FlaxAutoModel.from_pretrained("/home/ohadr/dpr_jax/v7_n7_dscodeparrot_b20.95_wd0.01_steps100000/passage_encoder")
-    print(model(**p_batch)[0][:, 0, :])
+    @pad_shard_unpad
+    @partial(jax.pmap,axis="device")
+    def apply_p_model(batch):
+        return p_model(**batch)[0][:, 0, :]
+    
+    @pad_shard_unpad
+    @partial(jax.pmap,axis="device")
+    def apply_q_model(batch):
+        return q_model(**batch)[0][:, 0, :]
+    q_states = apply_p_model(q_batch,min_device_batch=per_device_batch_size)
+    p_states = apply_q_model(p_batch,min_device_batch=per_device_batch_size)
+    print(q_states.shape,p_states.shape)
 
 
+import fire
 
+
+if __name__ == '__main__':
+    fire.Fire(main)
 
 
 
