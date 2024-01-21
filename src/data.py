@@ -65,6 +65,7 @@ def parse_psg(p):
     return "Passage: "+ p['title'] + " " + p['text']
 def detok_parse_psg(p,tokenizer):
     return "Passage: "+ tokenizer.decode(p['text'])
+
 from functools import wraps
 def tokenize_examples(example,
                     tokenizer,
@@ -183,7 +184,7 @@ def format_example(x, n_passages=2, top_elements=1):
 
 from more_itertools import peekable
 
-def load_from_seqio(name, split):
+def load_from_seqio(name, split, repeat=True,limit=-1):
     from transformer import tasks
     import tensorflow as tf
     import seqio
@@ -201,8 +202,12 @@ def load_from_seqio(name, split):
         dataset = task.get_dataset(split=split,
                                     sequence_length=None,
                                     shuffle=False
-                                    ).take(100)
-    itr = dataset.repeat().prefetch(tf.data.experimental.AUTOTUNE).as_numpy_iterator()
+                                    )
+        if limit is not None:
+            dataset = dataset.take(limit)
+    if repeat:
+        dataset = dataset.repeat()
+    itr = dataset.prefetch(tf.data.experimental.AUTOTUNE).as_numpy_iterator()
     # if split=="validation":
         # itr = list(tqdm(itr,desc="Loading examples from dev"))
     

@@ -99,6 +99,14 @@ def save_to_cloud(model, params, remote_model_path, local_model_path = "/tmp/loc
     model.save_pretrained(local_model_path, params=params)
     rsync(local_model_path, remote_model_path)
     shutil.rmtree(local_model_path)
+    
+def load_from_cloud(model, remote_model_path, local_model_path = "/tmp/local_model"):
+    rsync(remote_model_path, local_model_path)
+    params = model.params
+    params = model.params.unfreeze()
+    params = FrozenDict({**params, **model.params.from_pretrained(local_model_path)})
+    shutil.rmtree(local_model_path)
+    return params
 
 @dataclass
 class DataArguments:

@@ -22,7 +22,6 @@ import math
 from jax.numpy import where
 import math
 
-
 from flax import struct
 
 class CfgNode:
