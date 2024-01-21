@@ -17,7 +17,7 @@ import datasets
 from functools import partial
 from transformers import AutoTokenizer
 from torch.utils.data import DataLoader
-
+from flax.training.common_utils import shard
 
 
 
@@ -73,32 +73,40 @@ import numpy as np
 import jax
 from flax.jax_utils import pad_shard_unpad
 
+def get_fwd_functions(model_path, per_device_batch_size):
+    p_model = FlaxAutoModel.from_pretrained(f"{model_path}/passage_encoder")
+    q_model = FlaxAutoModel.from_pretrained(f"{model_path}/query_encoder")
+    @pad_shard_unpad
+    @partial(jax.pmap,axis_name="device")
+    def apply_p_model(input_ids,attention_mask):
+        return p_model(input_ids,attention_mask)[0][:, 0, :]
+    @pad_shard_unpad
+    @partial(jax.pmap,axis_name="device")
+    def apply_q_model(input_ids,attention_mask):
+        return q_model(input_ids,attention_mask)[0][:, 0, :]
+    def fwd(batch):
+        q_batch,p_batch = batch
+        q_states = apply_p_model(**q_batch,min_device_batch=per_device_batch_size)
+        p_states = apply_q_model(**p_batch,min_device_batch=per_device_batch_size)
+        out = q_states,p_states
+        return jax.device_get(out)
+    return fwd
+from tqdm import tqdm
 def main(per_device_batch_size=8):
+    model_path = "/home/ohadr/dpr_jax/v7_n7_dscodeparrot_b20.95_wd0.01_steps100000"
+    forward_model = get_fwd_functions(model_path,per_device_batch_size=per_device_batch_size)
     encode_text = create_encode_text()
     dataset = load_from_seqio("codeparrot","validation",repeat=False,limit=None)
-    element = dataset.next()
-    ds = process_element(element)
-    ds = ds.map(encode_text, batched=True,remove_columns=ds.column_names)
-    dloader= DataLoader(ds,
-                        batch_size=per_device_batch_size*jax.local_device_count(),
-                        collate_fn=lambda v: package(v)
-                        )
-    p_model = FlaxAutoModel.from_pretrained("/home/ohadr/dpr_jax/v7_n7_dscodeparrot_b20.95_wd0.01_steps100000/passage_encoder")
-    q_model = FlaxAutoModel.from_pretrained("/home/ohadr/dpr_jax/v7_n7_dscodeparrot_b20.95_wd0.01_steps100000/query_encoder")
-    batch = next(iter(dloader))
-    q_batch,p_batch = batch
-    @pad_shard_unpad
-    @partial(jax.pmap,axis="device")
-    def apply_p_model(batch):
-        return p_model(**batch)[0][:, 0, :]
-    
-    @pad_shard_unpad
-    @partial(jax.pmap,axis="device")
-    def apply_q_model(batch):
-        return q_model(**batch)[0][:, 0, :]
-    q_states = apply_p_model(q_batch,min_device_batch=per_device_batch_size)
-    p_states = apply_q_model(p_batch,min_device_batch=per_device_batch_size)
-    print(q_states.shape,p_states.shape)
+    for element in tqdm(dataset,desc="Processing books"):
+        ds = process_element(element)
+        ds = ds.map(encode_text, batched=True,remove_columns=ds.column_names)
+        dloader= DataLoader(ds,
+                            batch_size=per_device_batch_size*jax.local_device_count(),
+                            collate_fn=lambda v: package(v)
+                            )
+        all_states = []
+        for batch in tqdm(dloader,desc="Processing batches"):
+            all_states.append(forward_model(batch))
 
 
 import fire
