@@ -3,6 +3,14 @@ import os
 os.environ["BUCKET"] = "meliad_eu2"
 os.environ["LOGURU_LEVEL"] = "INFO"
 # os.chdir("~/dpr_jax")
+if "DEBUG" in os.environ:
+  #alternative: python -m debugpy --wait-for-client --listen localhost:5678 `which seqio_cache_tasks` arg1 arg2
+  os.system('kill -9 $(lsof -t -i tcp:5678)')
+  import debugpy
+  debugpy.listen(5678)
+  print("Waiting for debugger attach")
+  debugpy.wait_for_client()
+  
 from src.data import load_from_seqio
 import sys
 from transformers import AutoConfig, AutoTokenizer, FlaxAutoModel
@@ -91,25 +99,50 @@ def get_fwd_functions(model_path, per_device_batch_size):
         out = q_states,p_states
         return jax.device_get(out)
     return fwd
+
 from tqdm import tqdm
-def main(per_device_batch_size=8):
+import faiss
+import pickle
+
+def main(per_device_batch_size=4):
     model_path = "/home/ohadr/dpr_jax/v7_n7_dscodeparrot_b20.95_wd0.01_steps100000"
     forward_model = get_fwd_functions(model_path,per_device_batch_size=per_device_batch_size)
+    batch_size=per_device_batch_size*jax.local_device_count()
     encode_text = create_encode_text()
     dataset = load_from_seqio("codeparrot","validation",repeat=False,limit=None)
+    all_dist = []
     for element in tqdm(dataset,desc="Processing books"):
         ds = process_element(element)
         ds = ds.map(encode_text, batched=True,remove_columns=ds.column_names)
         dloader= DataLoader(ds,
-                            batch_size=per_device_batch_size*jax.local_device_count(),
+                            batch_size=batch_size,
                             collate_fn=lambda v: package(v)
                             )
         all_states = []
-        for batch in tqdm(dloader,desc="Processing batches"):
-            all_states.append(forward_model(batch))
+        index = faiss.IndexFlatIP(768)
+        for i,batch in enumerate(tqdm(dloader,desc="Processing batches")):
+            q_states,p_states = forward_model(batch)
+            if i>0:
+                all_states.append(index.search(q_states, 20))
+            index.add(p_states)
+            
+        D, I = all_states[0]
+        assert D.shape[0]==batch_size
+        all_states = [(np.ones_like(D),np.ones_like(I))] + all_states
+            # all_states.append()
+        D,I = jax.tree_util.tree_map(lambda *args: np.concatenate(args, axis=0), *all_states)
+        
+        all_dist.append(I)
+        
+        
+        print(I,I.shape)
+    with open("out_codeparrot.pkl","wb") as f:
+        pickle.dump(all_dist,f)
+    print("Done")
 
 
 import fire
+import flax
 
 
 if __name__ == '__main__':
